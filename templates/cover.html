@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Personal Finance Journal{% endblock %}
+{% block body_class %}cover-page no-bg3d{% endblock %}
+{% block bg3d %}{% endblock %}
+{% block main_class %}cover-main{% endblock %}
+{% block content %}
+<div id="scene" class="cover-scene" aria-hidden="true"></div>
+
+<!-- Static stand-in when WebGL is unavailable -->
+<div class="cover-fallback" aria-hidden="true">
+  <div class="fallback-book"><em>Personal</em><strong>FINANCE</strong><em>Journal</em></div>
+</div>
+
+<section class="cover-copy">
+  <p class="eyebrow">Less than 5 minutes a day</p>
+  <h1 class="cover-title"><em>Know why</em><br>you spend.</h1>
+  <p class="cover-lead">
+    Log every rupee with its <b>category</b>, the <b>driving force</b> behind it and how it made
+    you <b>feel</b>. Your monthly reflection is worked out for you.
+  </p>
+  <ul class="cover-points">
+    <li>Plan your goals</li><li>Track spending habits</li><li>Celebrate achievements</li><li>Understand your money mindset</li>
+  </ul>
+  <div class="cover-actions">
+    {% if g.user %}
+      <button class="btn btn-primary btn-lg" id="open-journal" data-href="{{ url_for('journal.home') }}">Open my journal →</button>
+    {% else %}
+      <button class="btn btn-primary btn-lg" id="open-journal" data-href="{{ url_for('auth.signup') }}">Start your journal →</button>
+      <a class="btn btn-ghost btn-lg" href="{{ url_for('auth.login') }}">I have an account</a>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/cover3d.js') }}"></script>
+<script>
+  // Works before the 3D module loads (or if it never does).
+  document.getElementById("open-journal").addEventListener("click", function (e) {
+    var href = e.currentTarget.dataset.href;
+    if (window.__coverOpen) window.__coverOpen(href); else location.href = href;
+  });
+</script>
+{% endblock %}

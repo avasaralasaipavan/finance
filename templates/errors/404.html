@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Not found · Finance Journal{% endblock %}
+{% block content %}
+<section class="empty-state">
+  <p class="big-num">404</p>
+  <h1>This page isn't in the journal</h1>
+  <a class="btn btn-primary" href="{{ url_for('journal.cover') }}">Back to the cover</a>
+</section>
+{% endblock %}

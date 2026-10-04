@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block main_class %}auth-wrap{% endblock %}
+{% block content %}
+<div class="auth-stage">
+  <div class="auth-scene" id="auth-scene" data-variant="{% block scene_variant %}journal{% endblock %}" aria-hidden="true"></div>
+  <section class="auth-card card">
+    <div class="auth-head">
+      <span class="auth-badge" aria-hidden="true">{% block badge %}₹{% endblock %}</span>
+      <h1>{% block heading %}{% endblock %}</h1>
+      <p class="muted">{% block sub %}{% endblock %}</p>
+    </div>
+    {% block form %}{% endblock %}
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/auth3d.js') }}"></script>
+{% endblock %}

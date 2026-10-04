@@ -1,0 +1,8 @@
+{% extends "auth/_layout.html" %}
+{% block title %}Sign up · Finance Journal{% endblock %}
+{% block heading %}Start your journal{% endblock %}
+{% block sub %}Track spending, spot emotional patterns, and grow your savings.{% endblock %}
+{% block form %}
+{% with submit_label = "Create account" %}{% include "auth/_signup_form.html" %}{% endwith %}
+<p class="auth-alt">Already have an account? <a href="{{ url_for('auth.login') }}">Log in</a></p>
+{% endblock %}

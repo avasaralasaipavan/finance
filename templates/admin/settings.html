@@ -1,0 +1,16 @@
+{% extends "admin/_layout.html" %}
+{% block title %}Settings · Admin{% endblock %}
+{% block heading %}Settings{% endblock %}
+{% block admin_content %}
+<form method="post" class="card form settings-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="switch-row">
+    <span>
+      <b>Allow public sign-up</b><br>
+      <span class="muted small">When off, the Sign up page is closed and only existing users can log in.</span>
+    </span>
+    <input type="checkbox" name="signup_enabled" class="switch" {{ 'checked' if signup_enabled }}>
+  </label>
+  <button class="btn btn-primary" type="submit">Save settings</button>
+</form>
+{% endblock %}

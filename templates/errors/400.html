@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Something went wrong · Finance Journal{% endblock %}
+{% block content %}
+<section class="empty-state">
+  <p class="big-num">400</p>
+  <h1>{{ message or "Bad request" }}</h1>
+  <a class="btn btn-primary" href="javascript:history.back()">Go back</a>
+</section>
+{% endblock %}

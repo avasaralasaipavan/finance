@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}{{ year }} · Finance Journal{% endblock %}
+{% block content %}
+{% set year_income = months | sum(attribute='income') %}
+{% set year_spent = months | sum(attribute='total') %}
+{% set year_invested = months | sum(attribute='invested') %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Your journal</p>
+    <h1 class="display">{{ year }}</h1>
+  </div>
+  <nav class="year-switch" aria-label="Year">
+    <a class="btn btn-ghost btn-icon" href="{{ url_for('journal.year_view', year=year - 1) }}" aria-label="Previous year">‹</a>
+    <select onchange="location.href=this.value" aria-label="Choose year">
+      {% for y in years %}
+        <option value="{{ url_for('journal.year_view', year=y) }}" {{ 'selected' if y == year }}>{{ y }}</option>
+      {% endfor %}
+    </select>
+    <a class="btn btn-ghost btn-icon" href="{{ url_for('journal.year_view', year=year + 1) }}" aria-label="Next year">›</a>
+  </nav>
+</section>
+
+<section class="stat-row">
+  <div class="stat"><span class="stat-label">Income in {{ year }}</span><span class="stat-value">{{ year_income | inr }}</span></div>
+  <div class="stat"><span class="stat-label">Spent</span><span class="stat-value">{{ year_spent | inr }}</span></div>
+  <div class="stat"><span class="stat-label">Invested</span><span class="stat-value">{{ year_invested | inr }}</span></div>
+  <div class="stat"><span class="stat-label">Left over</span>
+    <span class="stat-value {{ 'neg' if year_income - year_spent - year_invested < 0 }}">{{ (year_income - year_spent - year_invested) | inr }}</span>
+    <span class="stat-sub">Income − Spent − Invested</span></div>
+</section>
+
+<section class="shelf" data-shelf aria-label="Months of {{ year }}">
+  {% for m in months %}
+    {% set current = (year == today.year and m.month == today.month) %}
+    <a class="book {{ 'is-current' if current }} {{ 'has-data' if m.has_data else 'is-empty' }}"
+       href="{{ url_for('journal.month_view', year=year, month=m.month) }}"
+       style="--i: {{ loop.index0 }}">
+      <div class="book-3d">
+        <div class="book-back" aria-hidden="true"></div>
+        <div class="book-pages" aria-hidden="true"></div>
+        <div class="book-inside" aria-hidden="true"><span>{{ m.name }}</span></div>
+        <div class="book-spine" aria-hidden="true"><span>{{ month_abbr[m.month] }} {{ year }}</span></div>
+        <div class="book-cover">
+          <div class="month-card-head">
+            <span class="month-num">{{ '%02d' % m.month }}</span>
+            <h2>{{ m.name }}</h2>
+            {% if current %}<span class="badge">This month</span>{% endif %}
+          </div>
+          {% if m.has_data %}
+            <dl class="month-flow">
+              <div><dt>Income</dt><dd>{{ m.income | inr }}</dd></div>
+              <div><dt>Spent</dt><dd>{{ m.total | inr }}</dd></div>
+              <div><dt>Invested</dt><dd>{{ m.invested | inr }}</dd></div>
+              <div class="left"><dt>Left over</dt><dd class="{{ 'neg' if m.left_over < 0 }}">{{ m.left_over | inr }}</dd></div>
+            </dl>
+            {% if m.categories %}
+            <div class="split-bar" role="img"
+                 aria-label="Spending: {% for c in m.categories %}{{ c.label }} {{ (c.share * 100) | round | int }}%{{ ', ' if not loop.last }}{% endfor %}">
+              {% for c in m.categories %}
+                <span style="flex: {{ c.share }}; background: var(--series-{{ loop.index }})"></span>
+              {% endfor %}
+            </div>
+            <ul class="split-legend">
+              {% for c in m.categories %}
+                <li><i style="background: var(--series-{{ loop.index }})"></i>{{ c.label }} {{ (c.share * 100) | round | int }}%</li>
+              {% endfor %}
+            </ul>
+            {% endif %}
+          {% else %}
+            <p class="month-empty">Empty page, start writing →</p>
+          {% endif %}
+        </div>
+      </div>
+    </a>
+  {% endfor %}
+</section>
+<p class="shelf-hint muted small">Swipe to browse the months, then tap one to open it.</p>
+{% endblock %}

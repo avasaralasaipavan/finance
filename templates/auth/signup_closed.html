@@ -1,0 +1,5 @@
+{% extends "auth/_layout.html" %}
+{% block title %}Sign up closed · Finance Journal{% endblock %}
+{% block heading %}Sign up is closed{% endblock %}
+{% block sub %}New accounts are currently disabled. Ask the admin for access.{% endblock %}
+{% block form %}<a class="btn btn-primary btn-block" href="{{ url_for('auth.login') }}">Go to log in</a>{% endblock %}

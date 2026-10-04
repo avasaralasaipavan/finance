@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% block title %}{{ month_name[month] }} {{ year }} · Finance Journal{% endblock %}
+{% macro entry_form(kind, title, submit_label) %}
+<form class="card quick-add" data-entry="{{ kind }}" novalidate>
+  <div class="quick-add-head">
+    <h2 class="card-title form-title" data-default="{{ title }}">{{ title }}</h2>
+    <button type="button" class="btn btn-ghost btn-sm cancel-edit" hidden>Cancel edit</button>
+  </div>
+  {{ caller() }}
+  <div class="quick-row">
+    <label class="field grow"><span>Notes <small class="muted">(optional)</small></span>
+      <input name="notes" maxlength="300" placeholder="Anything worth remembering"></label>
+    <button class="btn btn-primary btn-lg submit" type="submit" data-default="{{ submit_label }}">{{ submit_label }}</button>
+  </div>
+  <p class="form-error" role="alert"></p>
+</form>
+{% endmacro %}
+{% block content %}
+<section class="page-head month-head">
+  <a class="btn btn-ghost btn-icon" href="{{ url_for('journal.month_view', year=prev[0], month=prev[1], tab=tab) }}"
+     aria-label="Previous month" data-nav="prev">‹</a>
+  <div class="month-title">
+    <a class="eyebrow" href="{{ url_for('journal.year_view', year=year) }}">{{ year }} journal</a>
+    <h1 class="display">{{ month_name[month] }}</h1>
+  </div>
+  <a class="btn btn-ghost btn-icon" href="{{ url_for('journal.month_view', year=next[0], month=next[1], tab=tab) }}"
+     aria-label="Next month" data-nav="next">›</a>
+</section>
+
+<div class="money-hero">
+<section class="stat-row money-flow" id="stats" aria-live="polite">
+  <div class="stat"><span class="stat-label">Income</span><span class="stat-value" data-stat="income">—</span>
+    <span class="stat-sub" data-stat="income-sub"></span></div>
+  <div class="stat"><span class="stat-label">Spent</span><span class="stat-value" data-stat="total">—</span>
+    <span class="stat-sub" data-stat="total-sub"></span></div>
+  <div class="stat"><span class="stat-label">Invested</span><span class="stat-value" data-stat="invested">—</span>
+    <span class="stat-sub" data-stat="invested-sub"></span></div>
+  <div class="stat"><span class="stat-label">Left over</span><span class="stat-value" data-stat="left">—</span>
+    <span class="stat-sub">Income − Spent − Invested</span></div>
+</section>
+<div class="card bars-card">
+  <h2 class="card-title">This month at a glance</h2>
+  <div id="money-bars" class="money-bars"></div>
+</div>
+</div>
+
+<div class="tabs" role="tablist" aria-label="Month sections">
+  <button role="tab" id="tab-vision" aria-controls="panel-vision" data-tab="vision">Vision &amp; Tasks</button>
+  <button role="tab" id="tab-expenses" aria-controls="panel-expenses" data-tab="expenses">Expenses</button>
+  <button role="tab" id="tab-income" aria-controls="panel-income" data-tab="income">Income</button>
+  <button role="tab" id="tab-investments" aria-controls="panel-investments" data-tab="investments">Investments</button>
+  <button role="tab" id="tab-reflection" aria-controls="panel-reflection" data-tab="reflection">Reflection</button>
+</div>
+
+<div class="panels">
+  <!-- Vision & Tasks -->
+  <section class="panel" role="tabpanel" id="panel-vision" aria-labelledby="tab-vision" hidden>
+    <div class="two-col">
+      <div class="card">
+        <h2 class="card-title">Vision for the month</h2>
+        <textarea id="vision" rows="7" placeholder="What do you want this month to look like?"></textarea>
+        <p class="save-hint" data-save-hint="vision"></p>
+      </div>
+      <div class="card">
+        <h2 class="card-title">Tasks to complete</h2>
+        <form id="task-form" class="task-form">
+          <input id="task-input" placeholder="Add a task…" maxlength="200" aria-label="New task">
+          <button class="btn btn-primary" type="submit">Add</button>
+        </form>
+        <ul id="task-list" class="task-list"></ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- Expenses -->
+  <section class="panel" role="tabpanel" id="panel-expenses" aria-labelledby="tab-expenses" hidden>
+    {% call entry_form("expenses", "Add an expense", "Add expense") %}
+      <div class="quick-row">
+        <label class="field"><span>Date</span><input type="date" name="date" required></label>
+        <label class="field grow"><span>Expense</span>
+          <input name="item" placeholder="e.g. petrol, groceries, movie" maxlength="100" required autocomplete="off" list="item-suggestions"></label>
+        <label class="field amount"><span>Amount (₹)</span>
+          <input name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="0" required></label>
+      </div>
+      <div class="chip-groups" data-kinds="category,driving_force,emotion,payment_method"></div>
+      <datalist id="item-suggestions"></datalist>
+    {% endcall %}
+    <div class="list-head">
+      <h2>This month's expenses</h2>
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('journal.export_csv', year=year, month=month) }}">⤓ Download CSV</a>
+    </div>
+    <div id="weeks" class="weeks"></div>
+  </section>
+
+  <!-- Income -->
+  <section class="panel" role="tabpanel" id="panel-income" aria-labelledby="tab-income" hidden>
+    <p class="panel-intro">Add every bit of money that came in this month: salary, freelance work, interest, rent you received, gifts, refunds.</p>
+    {% call entry_form("incomes", "Add income", "Add income") %}
+      <div class="quick-row">
+        <label class="field"><span>Date</span><input type="date" name="date" required></label>
+        <label class="field amount"><span>Amount (₹)</span>
+          <input name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="0" required></label>
+      </div>
+      <div class="chip-groups" data-kinds="income_source"></div>
+    {% endcall %}
+    <div class="list-head">
+      <h2>Income this month</h2>
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('journal.export_income_csv', year=year, month=month) }}">⤓ Download CSV</a>
+    </div>
+    <div id="income-summary" class="source-pills"></div>
+    <div id="income-list"></div>
+  </section>
+
+  <!-- Investments -->
+  <section class="panel" role="tabpanel" id="panel-investments" aria-labelledby="tab-investments" hidden>
+    <p class="panel-intro">Record money you <b>put into</b> an investment (a SIP, FD, stocks, gold…) or <b>took out</b> of one.
+      Give each investment a name you'll recognise, like “SBI FD” or “Nifty 50 SIP”. Using the same name again adds to it.
+      See all your investments together on the <a href="{{ url_for('journal.portfolio') }}">Portfolio</a> page.</p>
+    {% call entry_form("investments", "Add an investment", "Save") %}
+      <fieldset class="chip-group">
+        <legend>What happened?</legend>
+        <div class="chips action-chips">
+          <label class="chip"><input type="radio" name="action" value="invest" checked><span>Put money in</span></label>
+          <label class="chip"><input type="radio" name="action" value="withdraw"><span>Took money out</span></label>
+        </div>
+      </fieldset>
+      <div class="quick-row">
+        <label class="field"><span>Date</span><input type="date" name="date" required></label>
+        <label class="field grow"><span>Investment name</span>
+          <input name="name" placeholder="e.g. SBI FD, Nifty 50 SIP, Gold coins" maxlength="80" required autocomplete="off" list="holding-suggestions"></label>
+        <label class="field amount"><span>Amount (₹)</span>
+          <input name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="0" required></label>
+      </div>
+      <div class="chip-groups" data-kinds="investment_type"></div>
+      <datalist id="holding-suggestions"></datalist>
+    {% endcall %}
+    <div class="list-head">
+      <h2>Investments this month</h2>
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('journal.export_investments_csv', year=year, month=month) }}">⤓ Download CSV</a>
+    </div>
+    <div id="investment-list"></div>
+  </section>
+
+  <!-- Reflection -->
+  <section class="panel" role="tabpanel" id="panel-reflection" aria-labelledby="tab-reflection" hidden>
+    <div class="reflection-grid">
+      <div class="card jar-card">
+        <h2 class="card-title">Savings jar</h2>
+        <div id="jar" class="jar-scene" aria-hidden="true"><div class="jar-fallback"><span></span></div></div>
+        <p class="jar-label" id="jar-label"></p>
+        <p class="jar-key muted small"><i class="coin coin-gold"></i> invested <i class="coin coin-silver"></i> left over</p>
+        <div class="flow-bar" id="flow-bar" role="img"></div>
+        <ul class="split-legend flow-legend" id="flow-legend"></ul>
+      </div>
+
+      <div class="card chart-card">
+        <h2 class="card-title">Spending by driving force</h2>
+        <div class="chart-box"><canvas id="chart-force" role="img" aria-label="Amount spent per driving force"></canvas></div>
+      </div>
+      <div class="card chart-card">
+        <h2 class="card-title">Spending by emotion</h2>
+        <div class="chart-box"><canvas id="chart-emotion" role="img" aria-label="Amount spent per emotion"></canvas></div>
+      </div>
+
+      <div class="card tallies-card">
+        <h2 class="card-title">Tallies</h2>
+        <div id="tallies" class="tallies"></div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">Achievements</h2>
+        <textarea id="achievements" rows="5" placeholder="What went well this month?"></textarea>
+        <p class="save-hint" data-save-hint="achievements"></p>
+      </div>
+      <div class="card">
+        <h2 class="card-title">Notes</h2>
+        <textarea id="notes" rows="5" placeholder="Patterns you noticed, things to change…"></textarea>
+        <p class="save-hint" data-save-hint="notes"></p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script type="application/json" id="payload">{{ payload | tojson }}</script>
+<script>
+  window.JOURNAL = {
+    year: {{ year }}, month: {{ month }}, today: "{{ today }}", tab: {{ tab | tojson }},
+    api: { month: "{{ url_for('journal.api_month', year=year, month=month) }}", base: "/api" }
+  };
+</script>
+{% endblock %}
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+<script src="{{ url_for('static', filename='js/month.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/jar3d.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/money3d.js') }}"></script>
+{% endblock %}

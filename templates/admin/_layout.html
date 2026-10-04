@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Admin panel</p>
+    <h1 class="display">{% block heading %}{% endblock %}</h1>
+  </div>
+</section>
+<nav class="subnav" aria-label="Admin">
+  {% for endpoint, label in [('admin.dashboard', 'Dashboard'), ('admin.options', 'Dropdowns'), ('admin.users', 'Users'), ('admin.settings', 'Settings')] %}
+    <a href="{{ url_for(endpoint) }}" {% if request.endpoint == endpoint %}aria-current="page" class="active"{% endif %}>{{ label }}</a>
+  {% endfor %}
+</nav>
+{% block admin_content %}{% endblock %}
+{% endblock %}

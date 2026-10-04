@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Portfolio · Finance Journal{% endblock %}
+{% block content %}
+{% set t = data.totals %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Your investments</p>
+    <h1 class="display">Portfolio</h1>
+  </div>
+  <a class="btn btn-primary" href="{{ url_for('journal.month_view', year=today.year, month=today.month, tab='investments') }}">+ Add an investment</a>
+</section>
+
+{% if not data.holdings %}
+  <section class="empty-state small">
+    <p class="big-num">◎</p>
+    <h3>No investments yet</h3>
+    <p class="muted">Open any month, go to the <b>Investments</b> tab and record money you put into a SIP, FD, stocks, gold or anything else.
+      It will show up here.</p>
+  </section>
+{% else %}
+<section class="stat-row">
+  <div class="stat"><span class="stat-label">Money put in</span><span class="stat-value">{{ t.put_in | inr }}</span>
+    <span class="stat-sub">all time</span></div>
+  <div class="stat"><span class="stat-label">Money taken out</span><span class="stat-value">{{ t.taken_out | inr }}</span>
+    <span class="stat-sub">all time</span></div>
+  <div class="stat"><span class="stat-label">Still invested</span><span class="stat-value">{{ t.net | inr }}</span>
+    <span class="stat-sub">put in − taken out</span></div>
+  <div class="stat"><span class="stat-label">Worth today</span><span class="stat-value">{{ t.value | inr }}</span>
+    <span class="stat-sub">
+      {% if t.gain is not none %}
+        <span class="{{ 'gain' if t.gain >= 0 else 'neg' }}"><i class="arrow3d {{ 'up' if t.gain >= 0 else 'down' }}" aria-hidden="true"></i>{{ 'Up' if t.gain >= 0 else 'Down' }} {{ (t.gain | abs) | inr }}</span>
+        on {{ t.valued_count }} of {{ data.holdings | length }} with a value
+      {% else %}add today's values below to see gains{% endif %}
+    </span></div>
+</section>
+
+<div class="card">
+  <h2 class="card-title">Your investments</h2>
+  <p class="muted small">“Worth today” is optional. Check your bank, broker or app and type in what each one is worth now to see your gain or loss.
+    If you leave it empty, we count it at the amount still invested.</p>
+  <div class="table-wrap">
+  <table class="data-table portfolio-table">
+    <thead><tr><th>Investment</th><th>Type</th><th class="num">Put in</th><th class="num">Taken out</th>
+      <th class="num">Still invested</th><th>Worth today</th><th class="num">Gain / loss</th></tr></thead>
+    <tbody>
+    {% for h in data.holdings %}
+      <tr>
+        <td data-label="Investment"><div><b>{{ h.name }}</b><br><span class="muted small">since {{ h.first_date }} · {{ h.entries }} entr{{ 'y' if h.entries == 1 else 'ies' }}</span></div></td>
+        <td data-label="Type">{{ h.type }}</td>
+        <td data-label="Put in" class="num">{{ h.put_in | inr }}</td>
+        <td data-label="Taken out" class="num">{{ h.taken_out | inr }}</td>
+        <td data-label="Still invested" class="num strong">{{ h.net | inr }}</td>
+        <td data-label="Worth today"><div class="value-cell">
+          <form method="post" action="{{ url_for('journal.portfolio_value') }}" class="value-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="name" value="{{ h.name }}">
+            <input name="current_value" type="number" inputmode="decimal" min="0" step="0.01"
+                   value="{{ '%.2f' % h.current_value if h.current_value is not none else '' }}"
+                   placeholder="Not set" aria-label="What {{ h.name }} is worth today">
+            <button class="btn btn-ghost btn-sm" type="submit">Save</button>
+          </form>
+          {% if h.value_updated %}<span class="muted small">updated {{ h.value_updated[:10] }}</span>{% endif %}
+        </div></td>
+        <td data-label="Gain / loss" class="num">
+          {% if h.gain is not none %}<div>
+            <span class="{{ 'gain' if h.gain >= 0 else 'neg' }}">{{ '▲' if h.gain >= 0 else '▼' }} {{ (h.gain | abs) | inr }}</span>
+            {% if h.gain_pct is not none %}<br><span class="muted small">{{ '%+.1f' % (h.gain_pct * 100) }}%</span>{% endif %}</div>
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="two-col portfolio-charts">
+  <div class="card donut-card">
+    <h2 class="card-title">Where your money is invested</h2>
+    <div class="donut-wrap">
+      <div id="donut3d" class="donut3d" role="img" aria-label="Share of your investments by type"></div>
+      <ul class="donut-legend">
+        {% for a in data.allocation %}
+          <li data-slice="{{ loop.index0 }}"><i style="background: var(--series-{{ loop.index }})"></i>
+            <span>{{ a.label }}</span><b>{{ (a.share * 100) | round | int }}%</b></li>
+        {% endfor %}
+      </ul>
+    </div>
+    <p class="muted small">Drag the ring to spin it. Based on “worth today” where you've entered it, otherwise the amount still invested.</p>
+  </div>
+  <div class="card chart-card">
+    <div class="card-title-row">
+      <h2 class="card-title">Invested each month</h2>
+      <nav class="year-switch small-switch" aria-label="Year">
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('journal.portfolio', year=year - 1) }}" aria-label="Previous year">‹</a>
+        <span class="strong">{{ year }}</span>
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('journal.portfolio', year=year + 1) }}" aria-label="Next year">›</a>
+      </nav>
+    </div>
+    <div id="bars-monthly" class="admin-bars"></div>
+  </div>
+</div>
+<script type="application/json" id="portfolio-monthly">{{ data.monthly | tojson }}</script>
+<script type="application/json" id="portfolio-allocation">{{ data.allocation | tojson }}</script>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if data.holdings %}
+<script type="module" src="{{ url_for('static', filename='js/donut3d.js') }}"></script>
+<script type="module">
+  import { bars3d } from "{{ url_for('static', filename='js/bars3d.js') }}";
+  const rows = JSON.parse(document.getElementById("portfolio-monthly").textContent);
+  const inr = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
+  bars3d(document.getElementById("bars-monthly"), {
+    ariaLabel: "Money invested each month of {{ year }}",
+    bars: rows.map((r) => ({
+      label: r.label, value: r.net, color: "--series-2", display: inr.format(r.net),
+      tipLabel: r.net < 0 ? `taken out in ${r.label}` : `invested in ${r.label}`,
+    })),
+  });
+</script>
+{% endif %}
+{% endblock %}

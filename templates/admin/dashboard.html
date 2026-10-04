@@ -1,0 +1,46 @@
+{% extends "admin/_layout.html" %}
+{% block title %}Admin · Finance Journal{% endblock %}
+{% block heading %}Dashboard{% endblock %}
+{% block admin_content %}
+<p class="muted">App-wide totals only. Individual users' entries and amounts stay private.</p>
+<section class="stat-row">
+  <div class="stat"><span class="stat-label">Users</span><span class="stat-value">{{ stats.users }}</span>
+    <span class="stat-sub">{{ stats.admins }} admin{{ 's' if stats.admins != 1 }} · {{ stats.inactive }} inactive</span></div>
+  <div class="stat"><span class="stat-label">Active this month</span><span class="stat-value">{{ stats.active_this_month }}</span>
+    <span class="stat-sub">added at least one entry</span></div>
+  <div class="stat"><span class="stat-label">Expenses this month</span><span class="stat-value">{{ stats.expenses_this_month }}</span>
+    <span class="stat-sub">{{ stats.expenses_total }} all time</span></div>
+  <div class="stat"><span class="stat-label">Income &amp; investment entries</span><span class="stat-value">{{ stats.incomes_total + stats.investments_total }}</span>
+    <span class="stat-sub">{{ stats.incomes_total }} income · {{ stats.investments_total }} investment</span></div>
+</section>
+
+<div class="two-col">
+  <div class="card chart-card">
+    <h2 class="card-title">Expenses logged per day <span class="muted small">last 30 days</span></h2>
+    <div id="bars-daily" class="admin-bars"></div>
+  </div>
+  <div class="card chart-card">
+    <h2 class="card-title">Sign-ups per month</h2>
+    <div id="bars-signups" class="admin-bars"></div>
+  </div>
+  {% for kind, title in [('driving_force', 'Driving force'), ('emotion', 'Emotion'), ('income_source', 'Income source'), ('investment_type', 'Investment type')] %}
+  <div class="card">
+    <h2 class="card-title">Most-used {{ title | lower }} values</h2>
+    {% set rows = stats.option_usage[kind] %}
+    {% set top = (rows | map(attribute='n') | max) if rows else 0 %}
+    <ul class="usage-list">
+      {% for r in rows %}
+        <li><span>{{ r.label }}</span>
+          <span class="usage-bar"><i style="width: {{ (r.n / top * 100) if top else 0 }}%"></i></span>
+          <span class="num">{{ r.n }}</span></li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+</div>
+<script type="application/json" id="admin-stats">{{ {'daily': stats.entries_per_day, 'signups': stats.signups_per_month} | tojson }}</script>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/admin3d.js') }}"></script>
+{% endblock %}

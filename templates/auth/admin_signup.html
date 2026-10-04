@@ -1,0 +1,9 @@
+{% extends "auth/_layout.html" %}
+{% block title %}Admin sign up · Finance Journal{% endblock %}
+{% block badge %}★{% endblock %}
+{% block scene_variant %}vault{% endblock %}
+{% block heading %}Create an admin account{% endblock %}
+{% block sub %}Admins manage dropdown values, users and app settings.{% endblock %}
+{% block form %}
+{% with submit_label = "Create admin account" %}{% include "auth/_signup_form.html" %}{% endwith %}
+{% endblock %}

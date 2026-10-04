@@ -1,0 +1,57 @@
+{% extends "admin/_layout.html" %}
+{% block title %}Dropdowns · Admin{% endblock %}
+{% block heading %}Dropdown values{% endblock %}
+{% block admin_content %}
+<p class="muted">These values appear as choices when users add an expense, income or investment. Renaming updates every past entry.
+  Values already in use can't be deleted. Hide them instead, and they'll stay on old entries but won't be offered for new ones.</p>
+<div class="options-grid">
+{% for kind, meta in kinds.items() %}
+  <section class="card" id="{{ kind }}">
+    <h2 class="card-title">{{ meta.title }}
+      {% if not meta.required %}<span class="badge badge-soft">optional</span>{% endif %}</h2>
+    <ul class="option-list">
+      {% for o in grouped[kind] %}
+      <li class="{{ 'is-hidden' if not o.is_active }}">
+        <form method="post" action="{{ url_for('admin.option_action', option_id=o.id, action='rename') }}" class="rename">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input name="label" value="{{ o.label }}" maxlength="40" aria-label="Rename {{ o.label }}" required>
+          <button class="btn btn-ghost btn-sm" type="submit">Save</button>
+        </form>
+        <span class="option-meta">
+          <span class="muted small">{{ o.uses }} use{{ 's' if o.uses != 1 }}</span>
+          {% if not o.is_active %}<span class="badge badge-soft">hidden</span>{% endif %}
+        </span>
+        <span class="option-actions">
+          <form method="post" action="{{ url_for('admin.option_action', option_id=o.id, action='up') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="icon-btn" type="submit" aria-label="Move {{ o.label }} up" title="Move up" {{ 'disabled' if loop.first }}>↑</button>
+          </form>
+          <form method="post" action="{{ url_for('admin.option_action', option_id=o.id, action='down') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="icon-btn" type="submit" aria-label="Move {{ o.label }} down" title="Move down" {{ 'disabled' if loop.last }}>↓</button>
+          </form>
+          <form method="post" action="{{ url_for('admin.option_action', option_id=o.id, action='toggle') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-ghost btn-sm" type="submit">{{ 'Hide' if o.is_active else 'Show' }}</button>
+          </form>
+          <form method="post" action="{{ url_for('admin.option_action', option_id=o.id, action='delete') }}"
+                data-confirm="Delete {{ o.label }}?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="icon-btn danger" type="submit" aria-label="Delete {{ o.label }}"
+              title="{{ 'In use, hide it instead' if o.uses else 'Delete' }}" {{ 'disabled' if o.uses }}><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg></button>
+          </form>
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+    <form method="post" action="{{ url_for('admin.option_add') }}" class="add-option">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="kind" value="{{ kind }}">
+      <input name="label" placeholder="New {{ meta.title | lower }} value" maxlength="40" required aria-label="New {{ meta.title }} value">
+      <button class="btn btn-primary btn-sm" type="submit">Add</button>
+    </form>
+  </section>
+{% endfor %}
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/admin.js') }}"></script>{% endblock %}

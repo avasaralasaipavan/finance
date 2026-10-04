@@ -1,0 +1,21 @@
+{% extends "auth/_layout.html" %}
+{% block title %}Admin login · Finance Journal{% endblock %}
+{% block badge %}★{% endblock %}
+{% block scene_variant %}vault{% endblock %}
+{% block heading %}Admin login{% endblock %}
+{% block sub %}For admin accounts only. Manage dropdowns, users and settings.{% endblock %}
+{% block form %}
+<form method="post" class="form" novalidate>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="field">
+    <span>Admin username or email</span>
+    <input name="login" value="{{ form.get('login', '') }}" autocomplete="username" required autofocus>
+  </label>
+  <label class="field">
+    <span>Password</span>
+    <input type="password" name="password" autocomplete="current-password" required>
+  </label>
+  <button class="btn btn-primary btn-block" type="submit">Log in to admin panel</button>
+</form>
+<p class="auth-alt">Not an admin? <a href="{{ url_for('auth.login') }}">Go to the normal login</a></p>
+{% endblock %}

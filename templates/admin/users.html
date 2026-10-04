@@ -1,0 +1,43 @@
+{% extends "admin/_layout.html" %}
+{% block title %}Users · Admin{% endblock %}
+{% block heading %}Users{% endblock %}
+{% block admin_content %}
+<div class="card">
+  <div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>User</th><th>Role</th><th>Status</th><th class="num">Entries</th><th>Last login</th><th>Joined</th><th>Actions</th></tr></thead>
+    <tbody>
+    {% for u in users %}
+      {% set me = u.id == g.user.id %}
+      <tr class="{{ 'is-hidden' if not u.is_active }}">
+        <td data-label="User"><div><b>{{ u.username }}</b>{% if me %} <span class="badge badge-soft">you</span>{% endif %}<br><span class="muted small">{{ u.email }}</span></div></td>
+        <td data-label="Role"><span class="badge {{ '' if u.role == 'admin' else 'badge-soft' }}">{{ u.role }}</span></td>
+        <td data-label="Status">{{ 'Active' if u.is_active else 'Deactivated' }}</td>
+        <td data-label="Entries" class="num">{{ u.entries }}</td>
+        <td data-label="Last login">{{ (u.last_login or '—')[:16] }}</td>
+        <td data-label="Joined">{{ u.created_at[:10] }}</td>
+        <td class="actions">
+          {% if not me %}
+          <form method="post" action="{{ url_for('admin.user_action', user_id=u.id, action='toggle-active') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-ghost btn-sm" type="submit">{{ 'Deactivate' if u.is_active else 'Activate' }}</button>
+          </form>
+          <form method="post" action="{{ url_for('admin.user_action', user_id=u.id, action='role') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-ghost btn-sm" type="submit">{{ 'Make user' if u.role == 'admin' else 'Make admin' }}</button>
+          </form>
+          {% endif %}
+          <form method="post" action="{{ url_for('admin.user_action', user_id=u.id, action='reset-password') }}"
+                data-confirm="Reset the password for {{ u.username }}? Their current password will stop working.">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-ghost btn-sm" type="submit">Reset password</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/admin.js') }}"></script>{% endblock %}
