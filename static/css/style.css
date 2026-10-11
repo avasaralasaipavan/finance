@@ -148,6 +148,14 @@ input, select, textarea, button { font: inherit; color: inherit; }
   .brand-text { display: none; }
   .nav-user { display: none; }
 }
+/* Small phones, logged in: logo + Log out + theme on the first row, page links on a full-width second row. */
+@media (max-width: 480px) {
+  .topbar-app { flex-wrap: wrap; gap: 6px 8px; }
+  .topbar-app .nav { display: contents; }
+  .topbar-app .nav > form { margin-left: auto; }
+  .topbar-app::after { content: ""; order: 1; flex-basis: 100%; }
+  .topbar-app .nav > a:not(.btn) { order: 2; flex: 1 1 0; text-align: center; padding: 6px 4px; }
+}
 
 /* --- buttons --------------------------------------------------------------- */
 .btn {
@@ -332,7 +340,19 @@ select { width: auto; cursor: pointer; }
 /* --- weekly tables ------------------------------------------------------------ */
 .weeks { display: grid; gap: 16px; }
 .week { padding: 0; overflow: hidden; }
-.week-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--border); }
+.week-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--border);
+             cursor: pointer; list-style: none; user-select: none; }
+.week-head::-webkit-details-marker { display: none; }
+.week-head:hover { background: var(--surface-2); }
+.week-head:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.week:not([open]) .week-head { border-bottom: 0; }
+.week-head h3 { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
+.week-sum { display: grid; justify-items: end; margin-left: auto; text-align: right; white-space: nowrap; }
+.week-chevron { width: 10px; height: 10px; flex: none; border-right: 2px solid var(--text-muted); border-bottom: 2px solid var(--text-muted);
+                transform: rotate(45deg); margin: -4px 4px 0; transition: transform .2s ease; }
+.week[open] .week-chevron { transform: rotate(-135deg); margin-top: 4px; }
+.week.is-current { outline: 2px solid var(--brand); outline-offset: -2px; }
+.week-now { align-self: center; font-family: var(--font); }
 .week-head h3 { font-size: 17px; font-family: var(--display); font-weight: 800; }
 .week-head h3 em { color: var(--brand-ink); }
 .week-total { font-family: var(--display); font-weight: 900; font-size: 18px; }
@@ -740,3 +760,69 @@ span.neg { font-weight: 700; }
 
 .portfolio-charts .admin-bars { height: 320px; }
 .portfolio-charts { align-items: start; }
+
+/* --- feedback ---------------------------------------------------------------- */
+.feedback-history { margin-top: 20px; max-width: 560px; }
+.feedback-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.feedback-list li { padding: 14px 0; border-top: 1px solid var(--border); }
+.feedback-list li:first-child { border-top: 0; padding-top: 0; }
+.feedback-list li.is-hidden { opacity: .6; }
+.feedback-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.feedback-meta .actions { margin-left: auto; display: flex; gap: 6px; }
+.feedback-message { margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.backup-card { margin-top: 20px; }
+.backup-card .btn { justify-self: start; }
+.stat-link { text-decoration: none; color: inherit; }
+
+/* --- vision & tasks helpers ---------------------------------------------------- */
+.card-help { margin: -8px 0 12px; }
+.progress { height: 8px; border-radius: 999px; background: var(--surface-sunk); overflow: hidden; flex: 1; min-width: 60px; }
+.progress span { display: block; height: 100%; border-radius: inherit; background: var(--brand); transition: width .4s ease; }
+.progress-line { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.progress-line:empty { display: none; }
+.task-list input { width: 20px; height: 20px; }
+.link-btn { background: none; border: 0; padding: 0; color: var(--brand-ink); font-weight: 600; text-decoration: underline; cursor: pointer; }
+
+/* --- ongoing habits ------------------------------------------------------------- */
+.habits-card { margin-top: 16px; }
+.habit-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; }
+@media (max-width: 640px) { .habit-form { grid-template-columns: 1fr; } }
+.habit-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 14px; }
+.habit { border: 1px solid var(--border); border-radius: 12px; padding: 14px; background: var(--surface-2); display: grid; gap: 10px; align-content: start; }
+.habit.is-stopped { opacity: .7; }
+.habit-head { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+.habit-head h3 { font-size: 15px; font-weight: 700; overflow-wrap: anywhere; }
+.habit-head p { margin: 2px 0 0; overflow-wrap: anywhere; }
+.habit-actions { display: flex; gap: 4px; flex: none; align-items: center; }
+.habit-today { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.habit-mark { border: 1px solid var(--border); background: var(--surface); }
+.habit-mark.is-done { background: var(--success); border-color: var(--success); color: #fff; }
+.habit-mark.is-missed { background: var(--danger); border-color: var(--danger); color: #fff; }
+.habit-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.hdow { text-align: center; font-size: 11px; font-weight: 700; color: var(--text-muted); }
+.hday { aspect-ratio: 1; min-height: 30px; display: grid; place-items: center; border-radius: 8px; font-size: 12px; font-weight: 600;
+        border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); padding: 0; }
+button.hday { cursor: pointer; }
+button.hday:hover { border-color: var(--brand); }
+.hday.pad { visibility: hidden; }
+.hday.off { opacity: .35; background: none; border-style: dashed; }
+.hday.today { outline: 2px solid var(--brand); outline-offset: 1px; }
+.hday.done { background: var(--success); border-color: var(--success); color: #fff; }
+.hday.done::after { content: "✓"; font-size: 9px; line-height: 1; margin-top: -4px; }
+.hday.missed { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
+.hday.missed::after { content: "✕"; font-size: 9px; line-height: 1; margin-top: -4px; }
+.habit-stats { margin: 0; color: var(--text-secondary); }
+.habit-empty, .stopped-habits { margin: 0; }
+.stopped-habits:empty { display: none; }
+.stopped-habits { margin-top: 12px; }
+
+/* --- vision vs reality ------------------------------------------------------------- */
+.review-card { grid-column: 1 / -1; }
+.review-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 20px 32px; }
+.review-vision { margin: 0 0 16px; padding: 10px 14px; border-left: 4px solid var(--brand); background: var(--brand-soft);
+                 border-radius: 0 10px 10px 0; white-space: pre-wrap; overflow-wrap: anywhere; font-style: italic; }
+.review-sub { font-size: 14px; font-weight: 700; margin: 0 0 8px; display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; }
+.review-sub + .progress { margin-bottom: 10px; }
+.review-habits { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.review-habits p { margin: 6px 0 0; }
+.review-habit-head { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 6px; overflow-wrap: anywhere; }

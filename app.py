@@ -1,6 +1,7 @@
-"""Personal Finance Journal — Flask app factory.
+"""Personal Finance Journal — the Flask app.
 
 Run:  python app.py           (development server on http://127.0.0.1:5000)
+WSGI: from app import app as application
 CLI:  flask --app app create-admin
       flask --app app seed-june <username>
 """
@@ -69,82 +70,88 @@ def format_inr(value, symbol=True):
     return ("-" if neg else "") + ("₹" if symbol else "") + out
 
 
-def create_app(test_config=None):
-    load_dotenv()
-    app = Flask(__name__, instance_relative_config=True)
-    Path(app.instance_path).mkdir(parents=True, exist_ok=True)
-    app.config.update(
-        SECRET_KEY=_secret_key(app.instance_path),
-        DATABASE=os.environ.get("DATABASE", str(Path(app.instance_path) / "journal.db")),
-        ADMIN_SIGNUP_ENABLED=_env_flag("ADMIN_SIGNUP_ENABLED", True),
-        SESSION_COOKIE_HTTPONLY=True,
-        SESSION_COOKIE_SAMESITE="Lax",
-        SESSION_COOKIE_SECURE=_env_flag("SESSION_COOKIE_SECURE", False),
-    )
-    if test_config:
-        app.config.update(test_config)
+# --- app ------------------------------------------------------------------------
 
-    db.init_app(app)
-    app.register_blueprint(auth.bp)
-    app.register_blueprint(journal.bp)
-    app.register_blueprint(admin.bp)
+load_dotenv()
+app = Flask(__name__, instance_relative_config=True)
+Path(app.instance_path).mkdir(parents=True, exist_ok=True)
+app.config.update(
+    SECRET_KEY=_secret_key(app.instance_path),
+    DATABASE=os.environ.get("DATABASE", str(Path(app.instance_path) / "journal.db")),
+    ADMIN_SIGNUP_ENABLED=_env_flag("ADMIN_SIGNUP_ENABLED", True),
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=_env_flag("SESSION_COOKIE_SECURE", False),
+)
 
-    # --- CSRF: one token per session, sent as a form field or X-CSRF-Token header.
-    def csrf_token():
-        if "csrf" not in session:
-            session["csrf"] = secrets.token_urlsafe(32)
-        return session["csrf"]
+db.init_app(app)
+app.register_blueprint(auth.bp)
+app.register_blueprint(journal.bp)
+app.register_blueprint(admin.bp)
 
-    @app.before_request
-    def check_csrf():
-        if request.method in ("POST", "PUT", "PATCH", "DELETE"):
-            sent = request.form.get("csrf_token") or request.headers.get("X-CSRF-Token", "")
-            if not hmac.compare_digest(sent, session.get("csrf", "")):
-                abort(400, description="Your session expired. Please reload the page and try again.")
 
-    @app.context_processor
-    def inject_globals():
-        return {"csrf_token": csrf_token, "month_name": calendar.month_name,
-                "month_abbr": calendar.month_abbr}
+# --- CSRF: one token per session, sent as a form field or X-CSRF-Token header.
+def csrf_token():
+    if "csrf" not in session:
+        session["csrf"] = secrets.token_urlsafe(32)
+    return session["csrf"]
 
-    app.add_template_filter(format_inr, "inr")
 
-    @app.errorhandler(404)
-    def not_found(_e):
-        return render_template("errors/404.html"), 404
+@app.before_request
+def check_csrf():
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        sent = request.form.get("csrf_token") or request.headers.get("X-CSRF-Token", "")
+        if not hmac.compare_digest(sent, session.get("csrf", "")):
+            abort(400, description="Your session expired. Please reload the page and try again.")
 
-    @app.errorhandler(400)
-    def bad_request(e):
-        if request.path.startswith("/api/"):
-            return {"error": e.description}, 400
-        return render_template("errors/400.html", message=e.description), 400
 
-    # --- CLI ------------------------------------------------------------------
-    @app.cli.command("create-admin")
-    @click.option("--username", prompt=True)
-    @click.option("--email", prompt=True)
-    @click.password_option()
-    def create_admin(username, email, password):
-        """Create an admin account."""
-        try:
-            db.create_user(username.strip(), email.strip().lower(),
-                           generate_password_hash(password), "admin")
-        except db.ValidationError as e:
-            raise click.ClickException(str(e))
-        click.echo(f"Admin '{username}' created.")
+@app.context_processor
+def inject_globals():
+    return {"csrf_token": csrf_token, "month_name": calendar.month_name,
+            "month_abbr": calendar.month_abbr}
 
-    @app.cli.command("seed-june")
-    @click.argument("username")
-    def seed_june(username):
-        """Load the June 2024 entries from the PDF into USERNAME's journal."""
-        user = db.find_user(username)
-        if user is None:
-            raise click.ClickException(f"No user named '{username}'. Sign up first.")
-        n, total = seed_june_2024.seed(user["id"])
-        click.echo(f"Loaded {n} June 2024 expenses ({format_inr(total)}) for {username}.")
 
-    return app
+app.add_template_filter(format_inr, "inr")
+
+
+@app.errorhandler(404)
+def not_found(_e):
+    return render_template("errors/404.html"), 404
+
+
+@app.errorhandler(400)
+def bad_request(e):
+    if request.path.startswith("/api/"):
+        return {"error": e.description}, 400
+    return render_template("errors/400.html", message=e.description), 400
+
+
+# --- CLI ------------------------------------------------------------------------
+
+@app.cli.command("create-admin")
+@click.option("--username", prompt=True)
+@click.option("--email", prompt=True)
+@click.password_option()
+def create_admin(username, email, password):
+    """Create an admin account."""
+    try:
+        db.create_user(username.strip(), email.strip().lower(),
+                       generate_password_hash(password), "admin")
+    except db.ValidationError as e:
+        raise click.ClickException(str(e))
+    click.echo(f"Admin '{username}' created.")
+
+
+@app.cli.command("seed-june")
+@click.argument("username")
+def seed_june(username):
+    """Load the June 2024 entries from the PDF into USERNAME's journal."""
+    user = db.find_user(username)
+    if user is None:
+        raise click.ClickException(f"No user named '{username}'. Sign up first.")
+    n, total = seed_june_2024.seed(user["id"])
+    click.echo(f"Loaded {n} June 2024 expenses ({format_inr(total)}) for {username}.")
 
 
 if __name__ == "__main__":
-    create_app().run(debug=_env_flag("FLASK_DEBUG", True))
+    app.run(debug=_env_flag("FLASK_DEBUG", True))

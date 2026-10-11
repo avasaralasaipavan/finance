@@ -88,3 +88,37 @@ CREATE TABLE IF NOT EXISTS holding_values (
     updated_at    TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id, name)
 );
+
+-- Bug reports and improvement ideas sent by users; reviewed in the admin panel.
+CREATE TABLE IF NOT EXISTS feedback (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    kind       TEXT    NOT NULL CHECK (kind IN ('bug', 'idea')),
+    message    TEXT    NOT NULL,
+    status     TEXT    NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'done')),
+    created_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback (status, created_at);
+
+-- Ongoing habits: a long-term vision followed every day ("Didn't eat out today").
+-- Runs from start_date until end_date (NULL = still going); shown in every month in between.
+CREATE TABLE IF NOT EXISTS habits (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    name       TEXT    NOT NULL,
+    why        TEXT    NOT NULL DEFAULT '',
+    start_date TEXT    NOT NULL,
+    end_date   TEXT,
+    created_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_habits_user ON habits (user_id);
+
+-- One row per marked day: done = 1 kept, 0 missed. No row = not marked.
+CREATE TABLE IF NOT EXISTS habit_checks (
+    habit_id INTEGER NOT NULL REFERENCES habits (id) ON DELETE CASCADE,
+    date     TEXT    NOT NULL,
+    done     INTEGER NOT NULL CHECK (done IN (0, 1)),
+    PRIMARY KEY (habit_id, date)
+);

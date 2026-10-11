@@ -2,7 +2,7 @@
 import calendar
 import json
 import sqlite3
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from flask import current_app, g
@@ -407,7 +407,7 @@ _EXPENSE_SELECT = (
 def list_expenses(user_id, year, month):
     start, end = month_bounds(year, month)
     rows = get_db().execute(
-        _EXPENSE_SELECT + " WHERE e.user_id = ? AND e.date BETWEEN ? AND ? ORDER BY e.date, e.id",
+        _EXPENSE_SELECT + " WHERE e.user_id = ? AND e.date BETWEEN ? AND ? ORDER BY e.date DESC, e.id DESC",
         (user_id, start, end),
     ).fetchall()
     return [dict(r, week=week_of(r["date"])) for r in rows]
@@ -462,7 +462,7 @@ _INCOME_SELECT = (
 def list_incomes(user_id, year, month):
     start, end = month_bounds(year, month)
     rows = get_db().execute(
-        _INCOME_SELECT + " WHERE i.user_id = ? AND i.date BETWEEN ? AND ? ORDER BY i.date, i.id",
+        _INCOME_SELECT + " WHERE i.user_id = ? AND i.date BETWEEN ? AND ? ORDER BY i.date DESC, i.id DESC",
         (user_id, start, end),
     ).fetchall()
     return [dict(r) for r in rows]
@@ -522,7 +522,7 @@ def _canonical_name(user_id, name):
 def list_investments(user_id, year, month):
     start, end = month_bounds(year, month)
     rows = get_db().execute(
-        _INVESTMENT_SELECT + " WHERE v.user_id = ? AND v.date BETWEEN ? AND ? ORDER BY v.date, v.id",
+        _INVESTMENT_SELECT + " WHERE v.user_id = ? AND v.date BETWEEN ? AND ? ORDER BY v.date DESC, v.id DESC",
         (user_id, start, end),
     ).fetchall()
     return [dict(r) for r in rows]
@@ -706,6 +706,144 @@ def save_month(user_id, year, month, data):
     return current
 
 
+# --- ongoing habits -------------------------------------------------------------
+
+def _parse_habit(data):
+    if not isinstance(data, dict):
+        raise ValidationError("Expected a JSON object.")
+    return {"name": _parse_text(data, "name", "Habit", 80),
+            "why": str(data.get("why") or "").strip()[:300]}
+
+
+def _own_habit(user_id, habit_id):
+    row = get_db().execute("SELECT * FROM habits WHERE id = ? AND user_id = ?",
+                           (habit_id, user_id)).fetchone()
+    if row is None:
+        raise ValidationError("Habit not found.")
+    return dict(row)
+
+
+def add_habit(user_id, data, start_date):
+    h = _parse_habit(data)
+    db = get_db()
+    db.execute("INSERT INTO habits (user_id, name, why, start_date) VALUES (?, ?, ?, ?)",
+               (user_id, h["name"], h["why"], start_date))
+    db.commit()
+
+
+def update_habit(user_id, habit_id, data):
+    _own_habit(user_id, habit_id)
+    h = _parse_habit(data)
+    db = get_db()
+    db.execute("UPDATE habits SET name = ?, why = ? WHERE id = ?", (h["name"], h["why"], habit_id))
+    db.commit()
+
+
+def set_habit_end(user_id, habit_id, end_date):
+    """Stop a habit from end_date on (None resumes it)."""
+    _own_habit(user_id, habit_id)
+    db = get_db()
+    db.execute("UPDATE habits SET end_date = ? WHERE id = ?", (end_date, habit_id))
+    db.commit()
+
+
+def delete_habit(user_id, habit_id):
+    _own_habit(user_id, habit_id)
+    db = get_db()
+    db.execute("DELETE FROM habits WHERE id = ?", (habit_id,))
+    db.commit()
+
+
+def set_habit_check(user_id, habit_id, data, today):
+    """Mark a day kept (done=true), missed (false) or clear it (null)."""
+    h = _own_habit(user_id, habit_id)
+    if not isinstance(data, dict):
+        raise ValidationError("Expected a JSON object.")
+    try:
+        d = date.fromisoformat(str(data.get("date", ""))).isoformat()
+    except ValueError:
+        raise ValidationError("Date must be in YYYY-MM-DD format.")
+    if d > today.isoformat():
+        raise ValidationError("You can't mark a day that hasn't happened yet.")
+    if d < h["start_date"] or (h["end_date"] and d > h["end_date"]):
+        raise ValidationError("That day is outside this habit's dates.")
+    done = data.get("done")
+    db = get_db()
+    if done is None:
+        db.execute("DELETE FROM habit_checks WHERE habit_id = ? AND date = ?", (habit_id, d))
+    else:
+        db.execute(
+            "INSERT INTO habit_checks (habit_id, date, done) VALUES (?, ?, ?)"
+            " ON CONFLICT(habit_id, date) DO UPDATE SET done = excluded.done",
+            (habit_id, d, 1 if done else 0))
+    db.commit()
+
+
+def _current_streak(habit_id, today):
+    """Kept days in a row ending today (or yesterday, while today is still unmarked)."""
+    rows = get_db().execute(
+        "SELECT date, done FROM habit_checks WHERE habit_id = ? AND date <= ? ORDER BY date DESC",
+        (habit_id, today.isoformat())).fetchall()
+    marks = {r["date"]: r["done"] for r in rows}
+    day = today if today.isoformat() in marks else today - timedelta(days=1)
+    streak = 0
+    while marks.get(day.isoformat()) == 1:
+        streak += 1
+        day -= timedelta(days=1)
+    return streak
+
+
+def month_habits(user_id, year, month, today):
+    """Habits running at any point in the month, with that month's marks and scores."""
+    start, end = month_bounds(year, month)
+    db = get_db()
+    habits = [dict(r) for r in db.execute(
+        "SELECT * FROM habits WHERE user_id = ? AND start_date <= ?"
+        " AND (end_date IS NULL OR end_date >= ?) ORDER BY start_date, id",
+        (user_id, end, start))]
+    for h in habits:
+        checks = {r["date"]: r["done"] for r in db.execute(
+            "SELECT date, done FROM habit_checks WHERE habit_id = ? AND date BETWEEN ? AND ?",
+            (h["id"], start, end))}
+        first = max(h["start_date"], start)
+        last = min(h["end_date"] or end, end, today.isoformat())
+        open_days = []
+        d = date.fromisoformat(first)
+        while d.isoformat() <= last:
+            open_days.append(d)
+            d += timedelta(days=1)
+        kept = sum(1 for v in checks.values() if v == 1)
+        missed = sum(1 for v in checks.values() if v == 0)
+        best = run = 0
+        for d in open_days:
+            run = run + 1 if checks.get(d.isoformat()) == 1 else 0
+            best = max(best, run)
+        miss_by_weekday = [0] * 7
+        for iso, v in checks.items():
+            if v == 0:
+                miss_by_weekday[date.fromisoformat(iso).weekday()] += 1
+        worst = max(range(7), key=lambda i: miss_by_weekday[i])
+        h.update({
+            "checks": checks,
+            "kept": kept,
+            "missed": missed,
+            "unmarked": max(len(open_days) - kept - missed, 0),
+            "rate": kept / (kept + missed) if kept + missed else None,
+            "best_streak": best,
+            "streak": _current_streak(h["id"], today),
+            # Only worth pointing out when one weekday stands out.
+            "worst_weekday": calendar.day_name[worst] if miss_by_weekday[worst] >= 2 else None,
+        })
+    return habits
+
+
+def stopped_habits(user_id, before):
+    """Habits that ended before the given date, so they can be resumed."""
+    return [dict(r) for r in get_db().execute(
+        "SELECT id, name, end_date FROM habits WHERE user_id = ? AND end_date < ?"
+        " ORDER BY end_date DESC", (user_id, before))]
+
+
 # --- reflection tallies -------------------------------------------------------
 
 def _tally(rows, key, options, amount=lambda r: r["amount"]):
@@ -820,6 +958,60 @@ def user_years(user_id):
     return [r[0] for r in rows]
 
 
+# --- feedback (bug reports and ideas) -----------------------------------------
+
+FEEDBACK_KINDS = {"bug": "Bug report", "idea": "Improvement idea"}
+
+
+def add_feedback(user_id, kind, message):
+    if kind not in FEEDBACK_KINDS:
+        raise ValidationError("Choose whether this is a bug or an idea.")
+    message = str(message or "").strip()
+    if not message or len(message) > 2000:
+        raise ValidationError("Please describe it in 1–2000 characters.")
+    db = get_db()
+    db.execute("INSERT INTO feedback (user_id, kind, message) VALUES (?, ?, ?)",
+               (user_id, kind, message))
+    db.commit()
+
+
+def list_feedback(user_id=None):
+    """All feedback (admin) or one user's own, open items first, newest first."""
+    sql = ("SELECT f.*, u.username FROM feedback f JOIN users u ON u.id = f.user_id")
+    params = ()
+    if user_id is not None:
+        sql += " WHERE f.user_id = ?"
+        params = (user_id,)
+    sql += " ORDER BY f.status = 'done', f.created_at DESC, f.id DESC"
+    return [dict(r) for r in get_db().execute(sql, params)]
+
+
+def get_feedback(feedback_id):
+    row = get_db().execute("SELECT * FROM feedback WHERE id = ?", (feedback_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def set_feedback_status(feedback_id, status):
+    db = get_db()
+    db.execute("UPDATE feedback SET status = ? WHERE id = ?", (status, feedback_id))
+    db.commit()
+
+
+def delete_feedback(feedback_id):
+    db = get_db()
+    db.execute("DELETE FROM feedback WHERE id = ?", (feedback_id,))
+    db.commit()
+
+
+def backup_to(path):
+    """Write a consistent snapshot of the whole database to path (safe while the app runs)."""
+    dest = sqlite3.connect(path)
+    try:
+        get_db().backup(dest)
+    finally:
+        dest.close()
+
+
 # --- admin dashboard (aggregates only, no individual amounts) ----------------
 
 def admin_stats(today):
@@ -840,6 +1032,7 @@ def admin_stats(today):
             "SELECT COUNT(*) FROM expenses WHERE date BETWEEN ? AND ?", month_start, month_end),
         "incomes_total": one("SELECT COUNT(*) FROM incomes"),
         "investments_total": one("SELECT COUNT(*) FROM investments"),
+        "feedback_open": one("SELECT COUNT(*) FROM feedback WHERE status = 'open'"),
     }
     stats["entries_per_day"] = [
         dict(r) for r in db.execute(

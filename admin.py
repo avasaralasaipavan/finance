@@ -1,8 +1,13 @@
 """Admin panel: dashboard, dropdown manager, users, settings."""
+import io
+import os
 import secrets
+import tempfile
 from datetime import date
+from pathlib import Path
 
-from flask import Blueprint, flash, g, redirect, render_template, request, url_for
+from flask import (Blueprint, flash, g, redirect, render_template, request,
+                   send_file, url_for)
 from werkzeug.security import generate_password_hash
 
 import db
@@ -115,6 +120,47 @@ def user_action(user_id, action):
     return redirect(url_for("admin.users"))
 
 
+# --- feedback -----------------------------------------------------------------
+
+@bp.route("/feedback")
+@admin_required
+def feedback():
+    return render_template("admin/feedback.html", items=db.list_feedback(), kinds=db.FEEDBACK_KINDS)
+
+
+@bp.post("/feedback/<int:feedback_id>/<action>")
+@admin_required
+def feedback_action(feedback_id, action):
+    item = db.get_feedback(feedback_id)
+    if item is None:
+        flash("Feedback not found.", "error")
+    elif action == "toggle":
+        db.set_feedback_status(feedback_id, "open" if item["status"] == "done" else "done")
+    elif action == "delete":
+        db.delete_feedback(feedback_id)
+        flash("Feedback deleted.", "success")
+    else:
+        flash("Unknown action.", "error")
+    return redirect(url_for("admin.feedback"))
+
+
+# --- backup -------------------------------------------------------------------
+
+@bp.route("/backup")
+@admin_required
+def backup():
+    """Download a snapshot of the whole database, named after today's date."""
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        db.backup_to(path)
+        data = Path(path).read_bytes()
+    finally:
+        os.remove(path)
+    return send_file(io.BytesIO(data), mimetype="application/vnd.sqlite3", as_attachment=True,
+                     download_name=f"{date.today().isoformat()}.db", max_age=0)
+
+
 # --- settings -----------------------------------------------------------------
 
 @bp.route("/settings", methods=("GET", "POST"))
@@ -124,4 +170,5 @@ def settings():
         db.set_setting("signup_enabled", "1" if request.form.get("signup_enabled") else "0")
         flash("Settings saved.", "success")
         return redirect(url_for("admin.settings"))
-    return render_template("admin/settings.html", signup_enabled=db.get_setting("signup_enabled") == "1")
+    return render_template("admin/settings.html", signup_enabled=db.get_setting("signup_enabled") == "1",
+                           today=date.today().isoformat())

@@ -1,5 +1,5 @@
-// Month page: tabs, entry forms (expenses / income / investments), lists, tasks,
-// autosaved text, tallies and the money-flow summary.
+// Month page: tabs, entry forms (expenses / income / investments), lists, tasks, habits,
+// autosaved text, tallies, the vision review and the money-flow summary.
 (function () {
   "use strict";
 
@@ -199,6 +199,7 @@
           ? await api("PUT", `${J.api.base}/${kind}/${editingId}`, data)
           : await api("POST", `${J.api.base}/${kind}`, data);
         if (isNew) window.UI3D?.flyCoin(submitBtn, $(`[data-stat="${COIN_TARGET[kind]}"]`).closest(".stat"));
+        if (kind === "expenses" && openWeeks) openWeeks.add(weekOf(saved.date)); // show the saved row
         await refresh();
         renderChips();
         reset();
@@ -245,20 +246,38 @@
   const emptyState = (icon, title, sub) =>
     `<div class="empty-state small"><p class="big-num">${icon}</p><h3>${title}</h3><p class="muted">${sub}</p></div>`;
 
+  // Weeks follow the PDF's tracker pages: 1-7, 8-14, 15-21, 22-end (same as db.week_of).
+  const weekOf = (iso) => Math.min(Math.floor((Number(iso.slice(8, 10)) - 1) / 7), 3) + 1;
+  const currentWeek = J.today >= monthStart && J.today <= monthEnd ? weekOf(J.today) : null;
+  // Which weeks are expanded. On phones only the current (or latest active) week starts open.
+  let openWeeks = null;
+  function initialOpenWeeks() {
+    if (!matchMedia("(max-width: 760px)").matches) return new Set([1, 2, 3, 4]);
+    const latest = state.expenses.length ? weekOf(state.expenses[0].date) : null; // newest first
+    return new Set([currentWeek || latest].filter(Boolean));
+  }
+
   function renderWeeks() {
     const host = $("#weeks");
     if (!state.expenses.length) {
       host.innerHTML = emptyState("✎", "No expenses yet this month", "Add your first one above. It takes under 10 seconds.");
       return;
     }
-    host.innerHTML = state.summary.weeks.map((w) => {
+    openWeeks = openWeeks || initialOpenWeeks();
+    host.innerHTML = [...state.summary.weeks].reverse().map((w) => {
       const rows = state.expenses.filter((e) => e.week === w.week);
       const range = w.week < 4 ? `${(w.week - 1) * 7 + 1}–${w.week * 7}` : `22–${lastDay}`;
-      return `<section class="week card">
-        <header class="week-head">
-          <h3><em>Week ${w.week}</em> <span class="muted small">days ${range}</span></h3>
-          <span class="week-total">${inr(w.total)}</span>
-        </header>
+      const isNow = w.week === currentWeek;
+      return `<details class="week card ${isNow ? "is-current" : ""}" data-week="${w.week}" ${openWeeks.has(w.week) ? "open" : ""}>
+        <summary class="week-head">
+          <h3><em>Week ${w.week}</em> <span class="muted small">days ${range}</span>
+            ${isNow ? `<span class="badge week-now">This week</span>` : ""}</h3>
+          <span class="week-sum">
+            <span class="week-total">${inr(w.total)}</span>
+            <span class="muted small">${w.count} expense${w.count === 1 ? "" : "s"}</span>
+          </span>
+          <span class="week-chevron" aria-hidden="true"></span>
+        </summary>
         ${rows.length ? `<div class="table-wrap"><table class="expense-table">
           <thead><tr><th>Date</th><th>Expense</th><th class="num">Amount</th><th>Category</th>
             <th>Driving force</th><th>Emotion</th><th>Payment</th><th>Notes</th><th><span class="sr-only">Actions</span></th></tr></thead>
@@ -275,9 +294,15 @@
               <td class="actions">${rowActions("expenses", e, e.item)}</td>
             </tr>`).join("")}
           </tbody></table></div>` : `<p class="muted week-empty">Nothing logged this week.</p>`}
-      </section>`;
+      </details>`;
     }).join("");
   }
+  // Remember what the user opened/closed so re-renders (after adding an entry) keep it.
+  $("#weeks").addEventListener("toggle", (e) => {
+    const week = Number(e.target.dataset.week);
+    if (!week || !openWeeks) return;
+    if (e.target.open) openWeeks.add(week); else openWeeks.delete(week);
+  }, true);
 
   function renderIncomes() {
     const rows = state.incomes;
@@ -410,6 +435,7 @@
     try {
       state = await api("POST", J.api.month, fields);
       if (hint) hint.textContent = "Saved ✓";
+      renderVisionReview();
       return true;
     } catch (err) {
       if (hint) hint.textContent = err.message;
@@ -428,18 +454,29 @@
 
   // --- tasks ------------------------------------------------------------------
 
-  function renderTasks() {
-    const list = $("#task-list");
-    const tasks = state.plan.tasks;
-    list.innerHTML = tasks.length ? tasks.map((t, i) => `
+  const progressBar = (ratio, label) =>
+    `<div class="progress" role="img" aria-label="${esc(label)}"><span style="width:${Math.round(ratio * 100)}%"></span></div>`;
+  const taskItem = (t, i, removable) => `
       <li class="${t.done ? "done" : ""}">
         <label><input type="checkbox" data-task="${i}" ${t.done ? "checked" : ""}><span>${esc(t.text)}</span></label>
-        <button class="icon-btn danger" data-task-del="${i}" aria-label="Remove task">×</button>
-      </li>`).join("") : `<li class="muted empty">No tasks yet.</li>`;
+        ${removable ? `<button class="icon-btn danger" data-task-del="${i}" aria-label="Remove task">×</button>` : ""}
+      </li>`;
+
+  function renderTasks() {
+    const tasks = state.plan.tasks;
+    const done = tasks.filter((t) => t.done).length;
+    $("#task-progress").innerHTML = tasks.length
+      ? `${progressBar(done / tasks.length, `${done} of ${tasks.length} tasks done`)}
+         <span class="small"><b>${done} of ${tasks.length}</b> done${done === tasks.length ? " 🎉" : ""}</span>`
+      : "";
+    $("#task-list").innerHTML = tasks.length
+      ? tasks.map((t, i) => taskItem(t, i, true)).join("")
+      : `<li class="muted empty">No tasks yet.</li>`;
   }
   async function saveTasks(tasks) {
     state.plan.tasks = tasks;
     renderTasks();
+    renderVisionReview();
     await savePlan({ tasks });
     renderTasks();
   }
@@ -451,7 +488,8 @@
     input.value = "";
     saveTasks([...state.plan.tasks, { text, done: false }]);
   });
-  $("#task-list").addEventListener("change", (e) => {
+  // Tasks can be ticked on the Vision & Tasks tab or in the Reflection review.
+  $(".panels").addEventListener("change", (e) => {
     const i = e.target.dataset.task;
     if (i === undefined) return;
     saveTasks(state.plan.tasks.map((t, n) => (n === Number(i) ? { ...t, done: e.target.checked } : t)));
@@ -460,6 +498,164 @@
     const b = e.target.closest("[data-task-del]");
     if (b) saveTasks(state.plan.tasks.filter((_, n) => n !== Number(b.dataset.taskDel)));
   });
+
+  // --- ongoing habits ---------------------------------------------------------------
+
+  const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"];
+  const firstWeekday = (new Date(J.year, J.month - 1, 1).getDay() + 6) % 7; // Monday = 0
+  const isCurrentMonth = J.today >= monthStart && J.today <= monthEnd;
+  const pct = (r) => (r === null || r === undefined ? "—" : `${Math.round(r * 100)}%`);
+  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  const markOf = (h, iso) => ({ 1: "done", 0: "missed" }[h.checks[iso]] || "");
+  const isOpenDay = (h, iso) => iso >= h.start_date && (!h.end_date || iso <= h.end_date) && iso <= J.today;
+  const isStopped = (h) => h.end_date && h.end_date <= monthEnd;
+  const MARK_WORDS = { done: "kept", missed: "missed", "": "not marked" };
+
+  function habitCard(h) {
+    const cells = Array.from({ length: firstWeekday }, () => `<span class="hday pad"></span>`);
+    for (let d = 1; d <= lastDay; d++) {
+      const iso = `${J.year}-${pad(J.month)}-${pad(d)}`;
+      const mark = markOf(h, iso);
+      const label = `${fmtDate(iso)}: ${MARK_WORDS[mark]}`;
+      cells.push(isOpenDay(h, iso)
+        ? `<button type="button" class="hday ${mark} ${iso === J.today ? "today" : ""}" data-habit="${h.id}"
+             data-date="${iso}" aria-label="${label}" title="${label}">${d}</button>`
+        : `<span class="hday off">${d}</span>`);
+    }
+    const todayMark = markOf(h, J.today);
+    const today = isCurrentMonth && isOpenDay(h, J.today) ? `
+      <div class="habit-today"><span class="small">Today:</span>
+        <button type="button" class="btn btn-sm habit-mark ${todayMark === "done" ? "is-done" : ""}" data-habit="${h.id}"
+          data-date="${J.today}" data-set="1" aria-pressed="${todayMark === "done"}">✓ Kept</button>
+        <button type="button" class="btn btn-sm habit-mark ${todayMark === "missed" ? "is-missed" : ""}" data-habit="${h.id}"
+          data-date="${J.today}" data-set="0" aria-pressed="${todayMark === "missed"}">✕ Missed</button>
+      </div>` : "";
+    const marked = h.kept + h.missed;
+    const stats = [
+      marked ? `<b>${h.kept} of ${marked}</b> marked days kept · <b>${pct(h.rate)}</b>` : "No days marked yet",
+      h.unmarked ? `${plural(h.unmarked, "day")} not marked` : "",
+      isCurrentMonth && h.streak ? `🔥 ${h.streak}-day streak` : "",
+      isStopped(h) ? `stopped ${fmtDate(h.end_date)}` : "",
+    ].filter(Boolean).join(" · ");
+    return `<article class="habit ${isStopped(h) ? "is-stopped" : ""}">
+      <header class="habit-head">
+        <div><h3>${esc(h.name)}</h3>${h.why ? `<p class="muted small">${esc(h.why)}</p>` : ""}</div>
+        <div class="habit-actions">
+          <button type="button" class="btn btn-ghost btn-sm" data-habit-act="${isStopped(h) ? "resume" : "stop"}"
+            data-id="${h.id}">${isStopped(h) ? "Resume" : "Stop"}</button>
+          <button type="button" class="icon-btn danger" data-habit-act="delete" data-id="${h.id}"
+            aria-label="Delete ${esc(h.name)}" title="Delete">${TRASH}</button>
+        </div>
+      </header>
+      ${today}
+      <div class="habit-grid" role="group" aria-label="${esc(h.name)}">
+        ${WEEKDAYS.map((w) => `<span class="hdow" aria-hidden="true">${w}</span>`).join("")}${cells.join("")}
+      </div>
+      <p class="habit-stats small">${stats}</p>
+    </article>`;
+  }
+
+  function renderHabits() {
+    $("#habit-list").innerHTML = state.habits.length
+      ? state.habits.map(habitCard).join("")
+      : `<p class="muted habit-empty">No ongoing habits yet. Example: <i>"Didn't eat out today"</i>, with why <i>"Waste no food, eat out less"</i>.</p>`;
+    $("#stopped-habits").innerHTML = state.stopped_habits.length
+      ? "Stopped habits: " + state.stopped_habits.map((h) =>
+          `${esc(h.name)} <button type="button" class="link-btn" data-habit-act="resume" data-id="${h.id}">Resume</button>`).join(" · ")
+      : "";
+  }
+
+  const habitUrl = (path = "") => `${J.api.base}/habits${path}?year=${J.year}&month=${J.month}`;
+
+  async function habitCall(method, path, body) {
+    const err = $("#habit-error");
+    err.textContent = "";
+    // Keep keyboard focus on the same day/button after the list re-renders.
+    const a = document.activeElement;
+    const refocus = a && a.dataset && a.dataset.habit
+      ? `[data-habit="${a.dataset.habit}"][data-date="${a.dataset.date}"]${a.dataset.set ? `[data-set="${a.dataset.set}"]` : ":not([data-set])"}`
+      : null;
+    try {
+      Object.assign(state, await api(method, habitUrl(path), body));
+      return true;
+    } catch (e) {
+      err.textContent = e.message;
+      Object.assign(state, await api("GET", J.api.month).catch(() => ({})));
+      return false;
+    } finally {
+      renderHabits();
+      renderVisionReview();
+      if (refocus) $(refocus)?.focus();
+    }
+  }
+
+  $("#habit-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const data = Object.fromEntries(new FormData(form));
+    if (!data.name.trim()) return;
+    if (await habitCall("POST", "", data)) form.reset();
+  });
+
+  $(".panels").addEventListener("click", (e) => {
+    const day = e.target.closest("[data-habit][data-date]");
+    if (day) {
+      const h = state.habits.find((x) => x.id === Number(day.dataset.habit));
+      const iso = day.dataset.date;
+      const cur = h.checks[iso];
+      let next;
+      if (day.dataset.set !== undefined) {           // Today: ✓ / ✕ buttons toggle
+        const want = day.dataset.set === "1";
+        next = cur === (want ? 1 : 0) ? null : want;
+      } else {                                       // calendar: blank → kept → missed → blank
+        next = cur === 1 ? false : cur === 0 ? null : true;
+      }
+      if (next === null) delete h.checks[iso]; else h.checks[iso] = next ? 1 : 0;
+      renderHabits();                                // instant feedback; the server reply fixes the totals
+      habitCall("POST", `/${h.id}/check`, { date: iso, done: next });
+      return;
+    }
+    const act = e.target.closest("[data-habit-act]");
+    if (!act) return;
+    const id = act.dataset.id;
+    const action = act.dataset.habitAct;
+    if (action === "delete") {
+      const h = state.habits.find((x) => x.id === Number(id));
+      if (!confirm(`Delete “${h.name}” and every day you've marked for it?\nTo keep its history, use Stop instead.`)) return;
+      habitCall("DELETE", `/${id}`);
+    } else {
+      habitCall("POST", `/${id}/${action}`);
+    }
+  });
+
+  // --- vision vs reality (Reflection) -------------------------------------------------
+
+  function renderVisionReview() {
+    const { vision, tasks } = state.plan;
+    const done = tasks.filter((t) => t.done).length;
+    const visionHtml = vision.trim()
+      ? `<blockquote class="review-vision">${esc(vision)}</blockquote>`
+      : `<p class="muted">No vision written for this month. <a href="#" data-goto-tab="vision">Write one</a>.</p>`;
+    const verdict = done === tasks.length ? "All done 🎉" : `${plural(tasks.length - done, "task")} still open`;
+    const tasksHtml = tasks.length ? `
+      <h3 class="review-sub">Tasks <span class="muted small">${done} of ${tasks.length} done · ${verdict}</span></h3>
+      ${progressBar(done / tasks.length, `${done} of ${tasks.length} tasks done`)}
+      <ul class="task-list review-tasks">${tasks.map((t, i) => taskItem(t, i, false)).join("")}</ul>`
+      : `<p class="muted small">No tasks for this month. <a href="#" data-goto-tab="vision">Add some</a>.</p>`;
+    const habitsHtml = state.habits.length ? `
+      <h3 class="review-sub">Ongoing habits <span class="muted small">this month</span></h3>
+      <ul class="review-habits">${state.habits.map((h) => `
+        <li>
+          <div class="review-habit-head"><b>${esc(h.name)}</b><span class="num strong">${pct(h.rate)}</span></div>
+          ${progressBar(h.rate || 0, `${h.name}: ${pct(h.rate)} of marked days kept`)}
+          <p class="muted small">✓ ${h.kept} kept · ✕ ${h.missed} missed · ${h.unmarked} not marked
+            · best streak ${plural(h.best_streak, "day")}${h.worst_weekday ? ` · most misses on <b>${h.worst_weekday}s</b>` : ""}</p>
+        </li>`).join("")}
+      </ul>`
+      : `<h3 class="review-sub">Ongoing habits</h3>
+         <p class="muted small">None yet. Add a daily habit on the <a href="#" data-goto-tab="vision">Vision &amp; Tasks</a> tab to see how often you kept it.</p>`;
+    $("#vision-review").innerHTML = `<div class="review-cols"><div>${visionHtml}${tasksHtml}</div><div>${habitsHtml}</div></div>`;
+  }
 
   // --- reflection visuals (charts + 3D jar) ------------------------------------
 
@@ -489,6 +685,8 @@
     renderIncomes();
     renderInvestments();
     renderTallies();
+    renderHabits();
+    renderVisionReview();
     renderReflectionVisuals();
     $("#item-suggestions").innerHTML = [...new Set(state.expenses.map((e) => e.item))]
       .map((i) => `<option value="${esc(i)}">`).join("");

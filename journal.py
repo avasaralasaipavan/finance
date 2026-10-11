@@ -31,9 +31,18 @@ def month_payload(year, month):
         "incomes": incomes,
         "investments": investments,
         "holdings": db.holding_names(uid),
+        **habit_payload(year, month),
         "summary": db.summarize(expenses, incomes, investments, options_all),
         "options": {k: [o for o in v if o["active"]] for k, v in options_all.items()},
         "option_kinds": db.OPTION_KINDS,
+    }
+
+
+def habit_payload(year, month):
+    uid = g.user["id"]
+    return {
+        "habits": db.month_habits(uid, year, month, date.today()),
+        "stopped_habits": db.stopped_habits(uid, db.month_bounds(year, month)[0]),
     }
 
 
@@ -109,6 +118,24 @@ def portfolio_value():
     return redirect(url_for("journal.portfolio"))
 
 
+# --- feedback -----------------------------------------------------------------
+
+@bp.route("/feedback", methods=("GET", "POST"))
+@login_required
+def feedback():
+    if request.method == "POST":
+        try:
+            db.add_feedback(g.user["id"], request.form.get("kind"), request.form.get("message"))
+            flash("Thanks! Your feedback was sent to the admin.", "success")
+            return redirect(url_for("journal.feedback"))
+        except db.ValidationError as e:
+            flash(str(e), "error")
+    return render_template("feedback.html", kinds=db.FEEDBACK_KINDS,
+                           items=db.list_feedback(g.user["id"]),
+                           kind=request.form.get("kind") or request.args.get("kind", "idea"),
+                           message=request.form.get("message", ""))
+
+
 # --- JSON API ---------------------------------------------------------------
 
 def _bad_request(e):
@@ -181,6 +208,65 @@ def api_delete_entry(kind, entry_id):
     if not delete(g.user["id"], entry_id):
         return jsonify(error="Entry not found."), 404
     return "", 204
+
+
+# Habit changes reply with the habits of the month being viewed (?year=&month=).
+
+def _habit_month():
+    year = request.args.get("year", type=int)
+    month = request.args.get("month", type=int)
+    if year is None or month is None:
+        abort(400, description="Missing year or month.")
+    _check_month(year, month)
+    return year, month
+
+
+def _habit_change(fn):
+    year, month = _habit_month()
+    try:
+        fn(year, month)
+    except db.ValidationError as e:
+        return _bad_request(e)
+    return jsonify(habit_payload(year, month))
+
+
+@bp.post("/api/habits")
+@login_required
+def api_add_habit():
+    # A new habit counts from the 1st of the month it was added in, so earlier days can be filled in.
+    return _habit_change(lambda y, m: db.add_habit(
+        g.user["id"], request.get_json(silent=True), db.month_bounds(y, m)[0]))
+
+
+@bp.put("/api/habits/<int:habit_id>")
+@login_required
+def api_update_habit(habit_id):
+    return _habit_change(lambda y, m: db.update_habit(g.user["id"], habit_id, request.get_json(silent=True)))
+
+
+@bp.post("/api/habits/<int:habit_id>/check")
+@login_required
+def api_check_habit(habit_id):
+    return _habit_change(lambda y, m: db.set_habit_check(
+        g.user["id"], habit_id, request.get_json(silent=True), date.today()))
+
+
+@bp.post("/api/habits/<int:habit_id>/stop")
+@login_required
+def api_stop_habit(habit_id):
+    return _habit_change(lambda y, m: db.set_habit_end(g.user["id"], habit_id, date.today().isoformat()))
+
+
+@bp.post("/api/habits/<int:habit_id>/resume")
+@login_required
+def api_resume_habit(habit_id):
+    return _habit_change(lambda y, m: db.set_habit_end(g.user["id"], habit_id, None))
+
+
+@bp.delete("/api/habits/<int:habit_id>")
+@login_required
+def api_delete_habit(habit_id):
+    return _habit_change(lambda y, m: db.delete_habit(g.user["id"], habit_id))
 
 
 # --- export -----------------------------------------------------------------

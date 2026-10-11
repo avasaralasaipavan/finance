@@ -21,7 +21,7 @@
 </head>
 <body class="{% block body_class %}{% endblock %}">
   {% block topbar %}
-  <header class="topbar">
+  <header class="topbar{{ ' topbar-app' if g.user }}">
     <a class="brand" href="{{ url_for('journal.home') if g.user else url_for('journal.cover') }}">
       <span class="brand-mark" aria-hidden="true">₹</span>
       <span class="brand-text"><em>Personal</em> Finance Journal</span>
@@ -30,6 +30,7 @@
       {% if g.user %}
         <a href="{{ url_for('journal.home') }}" class="{{ 'active' if request.endpoint in ('journal.year_view', 'journal.month_view') }}">Journal</a>
         <a href="{{ url_for('journal.portfolio') }}" class="{{ 'active' if request.endpoint == 'journal.portfolio' }}">Portfolio</a>
+        <a href="{{ url_for('journal.feedback') }}" class="{{ 'active' if request.endpoint == 'journal.feedback' }}">Feedback</a>
         {% if g.user.role == 'admin' %}
           <a href="{{ url_for('admin.dashboard') }}" class="{{ 'active' if request.blueprint == 'admin' }}">Admin</a>
         {% endif %}

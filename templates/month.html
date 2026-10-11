@@ -58,17 +58,34 @@
     <div class="two-col">
       <div class="card">
         <h2 class="card-title">Vision for the month</h2>
-        <textarea id="vision" rows="7" placeholder="What do you want this month to look like?"></textarea>
+        <p class="card-help muted small">The <b>result</b> you want by the end of this month. Add a number so you can check it on the last day.</p>
+        <textarea id="vision" rows="7" placeholder="e.g. Save ₹10,000 and eat out at most 4 times (under ₹2,000)."></textarea>
         <p class="save-hint" data-save-hint="vision"></p>
       </div>
       <div class="card">
         <h2 class="card-title">Tasks to complete</h2>
+        <p class="card-help muted small">One-time <b>steps</b> toward the vision. Tick each one when it's done.</p>
         <form id="task-form" class="task-form">
-          <input id="task-input" placeholder="Add a task…" maxlength="200" aria-label="New task">
+          <input id="task-input" placeholder="e.g. Buy a tiffin box" maxlength="200" aria-label="New task">
           <button class="btn btn-primary" type="submit">Add</button>
         </form>
+        <div class="progress-line" id="task-progress"></div>
         <ul id="task-list" class="task-list"></ul>
       </div>
+    </div>
+
+    <div class="card habits-card">
+      <h2 class="card-title">Ongoing habits</h2>
+      <p class="card-help muted small">For a vision you follow <b>every day</b>, month after month. Habits carry into every
+        month until you stop them. Tap a day once for <b>✓ kept</b>, twice for <b>✕ missed</b>, three times to clear.</p>
+      <form id="habit-form" class="habit-form">
+        <input name="name" placeholder="Daily habit, e.g. Didn't eat out today" maxlength="80" aria-label="Habit" required>
+        <input name="why" placeholder="Why (optional), e.g. Waste no food, eat out less" maxlength="300" aria-label="Why">
+        <button class="btn btn-primary" type="submit">Add habit</button>
+      </form>
+      <p class="form-error" id="habit-error" role="alert"></p>
+      <div id="habit-list" class="habit-list"></div>
+      <p id="stopped-habits" class="muted small stopped-habits"></p>
     </div>
   </section>
 
@@ -144,6 +161,11 @@
   <!-- Reflection -->
   <section class="panel" role="tabpanel" id="panel-reflection" aria-labelledby="tab-reflection" hidden>
     <div class="reflection-grid">
+      <div class="card review-card">
+        <h2 class="card-title">Vision vs reality</h2>
+        <div id="vision-review"></div>
+      </div>
+
       <div class="card jar-card">
         <h2 class="card-title">Savings jar</h2>
         <div id="jar" class="jar-scene" aria-hidden="true"><div class="jar-fallback"><span></span></div></div>

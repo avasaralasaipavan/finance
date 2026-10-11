@@ -1,0 +1,40 @@
+{% extends "admin/_layout.html" %}
+{% block title %}Feedback · Admin{% endblock %}
+{% block heading %}Feedback{% endblock %}
+{% block admin_content %}
+{% if not items %}
+  <section class="empty-state small">
+    <p class="big-num">✉</p>
+    <h3>No feedback yet</h3>
+    <p class="muted">Bug reports and ideas that users send from the Feedback page show up here.</p>
+  </section>
+{% else %}
+<div class="card">
+  <ul class="feedback-list">
+    {% for f in items %}
+      <li class="{{ 'is-hidden' if f.status == 'done' }}">
+        <div class="feedback-meta">
+          <span class="tag">{{ kinds[f.kind] }}</span>
+          <span class="badge {{ 'badge-soft' if f.status == 'open' }}">{{ 'Open' if f.status == 'open' else 'Done' }}</span>
+          <b>{{ f.username }}</b>
+          <span class="muted small">{{ f.created_at[:16] }}</span>
+          <span class="actions">
+            <form method="post" action="{{ url_for('admin.feedback_action', feedback_id=f.id, action='toggle') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-ghost btn-sm" type="submit">{{ 'Mark done' if f.status == 'open' else 'Reopen' }}</button>
+            </form>
+            <form method="post" action="{{ url_for('admin.feedback_action', feedback_id=f.id, action='delete') }}"
+                  data-confirm="Delete this feedback from {{ f.username }}?">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-ghost btn-sm" type="submit">Delete</button>
+            </form>
+          </span>
+        </div>
+        <p class="feedback-message">{{ f.message }}</p>
+      </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/admin.js') }}"></script>{% endblock %}

@@ -7,7 +7,7 @@
   </div>
 </section>
 <nav class="subnav" aria-label="Admin">
-  {% for endpoint, label in [('admin.dashboard', 'Dashboard'), ('admin.options', 'Dropdowns'), ('admin.users', 'Users'), ('admin.settings', 'Settings')] %}
+  {% for endpoint, label in [('admin.dashboard', 'Dashboard'), ('admin.options', 'Dropdowns'), ('admin.users', 'Users'), ('admin.feedback', 'Feedback'), ('admin.settings', 'Settings')] %}
     <a href="{{ url_for(endpoint) }}" {% if request.endpoint == endpoint %}aria-current="page" class="active"{% endif %}>{{ label }}</a>
   {% endfor %}
 </nav>

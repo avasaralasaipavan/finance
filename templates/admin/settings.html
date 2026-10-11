@@ -13,4 +13,13 @@
   </label>
   <button class="btn btn-primary" type="submit">Save settings</button>
 </form>
+
+<section class="card form settings-form backup-card">
+  <span>
+    <b>Back up the database</b><br>
+    <span class="muted small">Downloads a full copy of every user's data as a SQLite file named after today's date
+      (e.g. {{ today }}.db). Store it somewhere safe — it contains everyone's entries.</span>
+  </span>
+  <a class="btn btn-primary" href="{{ url_for('admin.backup') }}" download>Download backup</a>
+</section>
 {% endblock %}

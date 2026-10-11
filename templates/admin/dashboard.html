@@ -12,6 +12,8 @@
     <span class="stat-sub">{{ stats.expenses_total }} all time</span></div>
   <div class="stat"><span class="stat-label">Income &amp; investment entries</span><span class="stat-value">{{ stats.incomes_total + stats.investments_total }}</span>
     <span class="stat-sub">{{ stats.incomes_total }} income · {{ stats.investments_total }} investment</span></div>
+  <a class="stat stat-link" href="{{ url_for('admin.feedback') }}"><span class="stat-label">Open feedback</span><span class="stat-value">{{ stats.feedback_open }}</span>
+    <span class="stat-sub">bug reports &amp; ideas to review</span></a>
 </section>
 
 <div class="two-col">

@@ -36,7 +36,8 @@ Open http://127.0.0.1:5000
 - **3D cover:** a floating green journal with ₹ coins. "Open" swings the cover open and takes you into the journal.
 - **Year view:** 12 month cards, each showing income, spent, invested, left over and the category split.
 - **Month page:**
-  - **Vision & Tasks:** the month's vision (autosaved) and a task checklist.
+  - **Vision & Tasks:** the month's vision (autosaved), a task checklist with progress, and
+    ongoing daily habits (a tick calendar per habit that carries across months until stopped).
   - **Expenses:** quick-add with one-tap chips for Category, Driving Force, Emotion and Payment Method. Entries are grouped into Week 1–4 tables (days 1–7, 8–14, 15–21, 22–end) and can be edited or deleted.
   - **Income:** add money from any source (salary, freelance, interest, rent, gifts…). The tab shows a total for each source.
   - **Investments:** record money you **put into** or **took out of** an investment (SIP, FD, stocks, gold…).
@@ -87,7 +88,7 @@ Copy `.env.example` to `.env`. Real environment variables override `.env`.
 | `DATABASE` | `instance/journal.db` | SQLite file path |
 | `FLASK_DEBUG` | `true` | Debug mode for `python app.py` |
 
-For production, run it with a WSGI server, for example `waitress-serve --call app:create_app`, rather than `python app.py`.
+For production, run it with a WSGI server, for example `waitress-serve app:app`, rather than `python app.py`.
 
 ## Project layout
 

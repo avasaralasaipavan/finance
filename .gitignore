@@ -2,3 +2,12 @@ __pycache__/
 *.pyc
 instance/
 .env
+databasebackup/
+
+# Database files anywhere (live DB, downloaded backups like 2026-10-11.db, SQLite temp files)
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm

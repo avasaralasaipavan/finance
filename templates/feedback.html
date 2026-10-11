@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Feedback · Finance Journal{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Help improve the journal</p>
+    <h1 class="display">Feedback</h1>
+  </div>
+</section>
+
+<form method="post" class="card form settings-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <fieldset class="chip-group">
+    <legend>What would you like to send?</legend>
+    <div class="chips">
+      {% for value, label in kinds.items() %}
+        <label class="chip"><input type="radio" name="kind" value="{{ value }}" {{ 'checked' if kind == value }}><span>{{ label }}</span></label>
+      {% endfor %}
+    </div>
+  </fieldset>
+  <label>
+    <span class="muted small">Describe it. For a bug, say what you did, what you expected, and what happened instead.</span>
+    <textarea name="message" maxlength="2000" required rows="6">{{ message }}</textarea>
+  </label>
+  <button class="btn btn-primary" type="submit">Send feedback</button>
+</form>
+
+{% if items %}
+<div class="card feedback-history">
+  <h2 class="card-title">What you've sent</h2>
+  <ul class="feedback-list">
+    {% for f in items %}
+      <li class="{{ 'is-hidden' if f.status == 'done' }}">
+        <div class="feedback-meta">
+          <span class="tag">{{ kinds[f.kind] }}</span>
+          <span class="badge {{ 'badge-soft' if f.status == 'open' }}">{{ 'Open' if f.status == 'open' else 'Done' }}</span>
+          <span class="muted small">{{ f.created_at[:16] }}</span>
+        </div>
+        <p class="feedback-message">{{ f.message }}</p>
+      </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+{% endblock %}
