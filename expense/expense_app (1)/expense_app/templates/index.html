@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Expense dashboard</title>
+<style>
+  :root {
+    --bg: #faf9f5; --card: #ffffff; --ink: #1f1e1d; --ink2: #5f5e5a; --muted: #898781;
+    --line: #e1e0d9; --tile: #f1efe8;
+    --blue: #2a78d6; --orange: #eb6834; --gray: #b4b2a9; --aqua: #1baf7a; --violet: #6250d6; --yellow: #eda100;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a19; --card: #232321; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+      --line: #383835; --tile: #2c2c2a;
+      --blue: #3987e5; --orange: #d95926; --gray: #6b6a65; --aqua: #199e70; --violet: #9085e9; --yellow: #c98500;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1000px; margin: 0 auto; padding: 24px 16px 64px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+  h1 { font-size: 22px; font-weight: 500; margin: 0; }
+  h2 { font-size: 15px; font-weight: 500; margin: 0 0 2px; }
+  .sub { font-size: 13px; color: var(--ink2); margin: 0 0 12px; }
+  .tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; color: var(--ink2); }
+  button, .file, select, input, textarea { font: inherit; font-size: 13px; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+  button, .file { background: transparent; cursor: pointer; }
+  button:hover, .file:hover { background: var(--tile); }
+  button.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .file input { display: none; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .kpi { background: var(--tile); border-radius: 8px; padding: 12px 14px; }
+  .kpi .l { font-size: 12px; color: var(--ink2); }
+  .kpi .v { font-size: 20px; font-weight: 500; }
+  .kpi .v.neg { color: var(--orange); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin-bottom: 16px; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 16px; }
+  .grid2 .card { margin-bottom: 0; }
+  .box { position: relative; width: 100%; }
+  .stack { display: flex; height: 22px; border-radius: 4px; overflow: hidden; gap: 2px; margin: 10px 0 8px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 12px; color: var(--ink2); }
+  .legend span { display: inline-flex; align-items: center; gap: 4px; }
+  .sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--ink2); font-weight: 500; white-space: nowrap; }
+  td:first-child { white-space: nowrap; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tag { font-size: 12px; padding: 2px 8px; border-radius: 6px; background: var(--tile); color: var(--ink2); white-space: nowrap; }
+  .scroll { overflow-x: auto; }
+  .tall { max-height: 420px; overflow-y: auto; }
+  #msg { font-size: 13px; min-height: 18px; margin-bottom: 8px; }
+  #msg.err { color: var(--orange); }
+  #msg.ok { color: var(--aqua); }
+  details { margin-bottom: 16px; }
+  summary { cursor: pointer; font-weight: 500; }
+  .form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; }
+  .form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ink2); }
+  .form .wide { grid-column: 1 / -1; }
+  .empty { padding: 36px 16px; text-align: center; color: var(--ink2); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Expense dashboard</h1>
+      <div class="sub" id="source" style="margin:0"></div>
+    </div>
+    <div class="tools">
+      <label>User <select id="userSel"></select></label>
+      <label>Month <select id="monthSel"></select></label>
+      <label class="file">Upload database<input type="file" id="upload" accept=".db,.sqlite,.sqlite3"></label>
+    </div>
+  </header>
+  <div id="msg" role="alert"></div>
+
+  <div id="app" hidden>
+    <section class="kpis" id="kpis"></section>
+
+    <details class="card" id="addCard">
+      <summary>Add an expense</summary>
+      <div class="form" id="addForm">
+        <label>Date<input type="date" id="fDate"></label>
+        <label>Item<input type="text" id="fItem" placeholder="Petrol"></label>
+        <label>Amount (₹)<input type="number" id="fAmount" min="1" step="any" placeholder="150"></label>
+        <label>Category<select id="fCategory"></select></label>
+        <label>Driving force<select id="fForce"></select></label>
+        <label>Emotion<select id="fEmotion"></select></label>
+        <label>Payment method<select id="fPayment"></select></label>
+        <label class="wide">Notes<input type="text" id="fNotes" placeholder="Optional"></label>
+        <div class="wide"><button class="primary" id="addBtn" type="button">Save expense</button></div>
+      </div>
+    </details>
+
+    <div id="noData" class="card empty" hidden>No expenses for this user and month. Add one above or pick another month.</div>
+
+    <div id="charts">
+      <section class="card">
+        <h2>How the money felt</h2>
+        <p class="sub">Share of total spend by emotion tag.</p>
+        <div class="stack" id="emotionBar" role="img" aria-label="Emotion split bar"></div>
+        <div class="legend" id="emotionLegend"></div>
+      </section>
+
+      <section class="card">
+        <h2>Money in and out</h2>
+        <p class="sub" id="flowSub"></p>
+        <div class="grid2">
+          <div class="box" style="height:200px"><canvas id="flowChart" role="img" aria-label="Bar chart of income, spending, invested and left over"></canvas></div>
+          <div class="box" style="height:200px"><canvas id="incomeChart" role="img" aria-label="Bar chart of income by source"></canvas></div>
+        </div>
+        <div class="scroll" style="margin-top:12px" id="investWrap">
+          <table>
+            <thead><tr><th>Date</th><th>Investment</th><th>Type</th><th>Action</th><th class="n">Amount</th></tr></thead>
+            <tbody id="investRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Where the joyful spending really went</h2>
+        <p class="sub" id="joySub"></p>
+        <div class="box" style="height:130px"><canvas id="joyChart" role="img" aria-label="Bar chart splitting joyful spending into fixed bills, trip and other spends"></canvas></div>
+        <div class="scroll tall" style="margin-top:12px">
+          <table>
+            <thead><tr><th>Date</th><th>Item</th><th>Group</th><th>Driving force</th><th>Emotion</th><th class="n">Amount</th></tr></thead>
+            <tbody id="joyRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Trip cost</h2>
+        <p class="sub" id="tripSub"></p>
+        <div class="box" id="tripBox"><canvas id="tripChart" role="img" aria-label="Bar chart of trip costs"></canvas></div>
+      </section>
+
+      <div class="grid2">
+        <section class="card">
+          <h2 id="periodTitle">Flexible spending</h2>
+          <p class="sub">Excludes fixed bills.</p>
+          <div class="box" style="height:240px"><canvas id="periodChart" role="img" aria-label="Column chart of flexible spending over time"></canvas></div>
+        </section>
+        <section class="card">
+          <h2>Flexible spending by day</h2>
+          <p class="sub">Spikes show the big purchases.</p>
+          <div class="box" style="height:240px"><canvas id="dayChart" role="img" aria-label="Line chart of flexible spending by day"></canvas></div>
+        </section>
+      </div>
+
+      <section class="card">
+        <h2>Biggest flexible spends</h2>
+        <p class="sub">Blue means bought for happiness. Same-named entries are added together.</p>
+        <div class="box" style="height:340px"><canvas id="topChart" role="img" aria-label="Horizontal bar chart of the biggest flexible spends"></canvas></div>
+      </section>
+
+      <section class="card">
+        <h2>Regret spends</h2>
+        <p class="sub" id="regretSub"></p>
+        <div class="box" id="regretBox"><canvas id="regretChart" role="img" aria-label="Horizontal bar chart of regret spends"></canvas></div>
+      </section>
+
+      <div class="grid2">
+        <section class="card"><h2>Needs vs wants</h2>
+          <div class="box" style="height:150px"><canvas id="catChart" role="img" aria-label="Bar chart of spending by category"></canvas></div></section>
+        <section class="card"><h2>Driving force</h2>
+          <div class="box" style="height:230px"><canvas id="forceChart" role="img" aria-label="Bar chart of spending by driving force"></canvas></div></section>
+        <section class="card"><h2>Payment method</h2>
+          <div class="box" style="height:190px"><canvas id="payChart" role="img" aria-label="Bar chart of spending by payment method"></canvas></div></section>
+      </div>
+    </div>
+
+    <section class="card">
+      <h2>All expenses</h2>
+      <p class="sub" id="detailSub"></p>
+      <input type="search" id="search" placeholder="Search item, notes, emotion..." style="width:100%;max-width:340px;margin-bottom:10px">
+      <div class="scroll tall">
+        <table>
+          <thead><tr><th>Date</th><th>Item</th><th>Category</th><th>Driving force</th><th>Emotion</th><th>Paid by</th><th>Notes</th><th class="n">Amount</th></tr></thead>
+          <tbody id="detailRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <details class="card">
+      <summary>Settings: what counts as fixed or a trip</summary>
+      <p class="sub" style="margin-top:8px">Separate names with commas. Fixed names must match the item exactly (ignoring capitals). Trip words match any part of the item name.</p>
+      <div class="form">
+        <label class="wide">Fixed bills<input type="text" id="cfgFixed"></label>
+        <label class="wide">Trip words<input type="text" id="cfgTrip"></label>
+        <div class="wide"><button id="cfgSave" type="button">Save settings</button></div>
+      </div>
+    </details>
+  </div>
+</main>
+
+<script src="{{ url_for('static', filename='chart.umd.js') }}"></script>
+<script>
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const rupee = v => (v < 0 ? '-' : '') + '₹' + Math.abs(Math.round(v)).toLocaleString('en-IN');
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const $ = id => document.getElementById(id);
+const charts = {};
+let META = null, DATA = null;
+
+function say(text, kind) { const m = $('msg'); m.textContent = text || ''; m.className = kind || ''; }
+
+function draw(id, config) {
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart($(id), config);
+}
+
+function baseOptions(horizontal) {
+  const tick = css('--muted'), grid = css('--line');
+  const money = { grid: { color: grid }, ticks: { color: tick, callback: v => rupee(v) }, beginAtZero: true };
+  const cat = { grid: { display: false }, ticks: { color: tick, autoSkip: false } };
+  return {
+    responsive: true, maintainAspectRatio: false, indexAxis: horizontal ? 'y' : 'x',
+    plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => rupee(horizontal ? c.parsed.x : c.parsed.y) } } },
+    scales: horizontal ? { x: money, y: cat } : { x: cat, y: money }
+  };
+}
+
+function bar(id, labels, values, colors, horizontal) {
+  draw(id, { type: 'bar',
+    data: { labels, datasets: [{ data: values, backgroundColor: colors, borderRadius: 4, maxBarThickness: 24 }] },
+    options: baseOptions(horizontal) });
+}
+
+function sizeBox(id, rows) { $(id).style.height = Math.max(120, rows * 38 + 60) + 'px'; }
+
+function palette() {
+  const blue = css('--blue'), orange = css('--orange'), gray = css('--gray'), aqua = css('--aqua'), violet = css('--violet'), yellow = css('--yellow');
+  return {
+    blue, orange, gray, aqua, violet, yellow,
+    emotion: { Happy: blue, Overjoyed: violet, Normal: gray, Sad: yellow, Regret: orange },
+    force: { Happiness: blue, FOMO: orange, Needs: gray, 'External Pressure': violet }
+  };
+}
+
+function render(d) {
+  const P = palette(), k = d.kpis;
+  const empty = k.entries === 0;
+  $('noData').hidden = !empty;
+  $('charts').hidden = empty;
+  $('source').textContent = META.db + ' · ' + k.entries + ' entries';
+
+  const tiles = [['Total spent', k.total], ['Fixed bills', k.fixed], ['Flexible spending', k.flexible],
+    ['Joyful (Happy + Overjoyed)', k.joyful], ['Trip cost', k.trip], ['Regret spends', k.regret],
+    ['Income', k.income], ['Invested', k.invested], ['Left after spending and investing', k.left]];
+  $('kpis').innerHTML = tiles.map(t => '<div class="kpi"><div class="l">' + t[0] + '</div><div class="v' +
+    (t[1] < 0 ? ' neg' : '') + '">' + rupee(t[1]) + '</div></div>').join('');
+
+  renderDetails();
+  if (empty) return;
+
+  const total = d.emotion.reduce((s, e) => s + e.value, 0) || 1;
+  const eColor = l => P.emotion[l] || P.aqua;
+  $('emotionBar').innerHTML = d.emotion.map(e => '<div style="width:' + (100 * e.value / total) + '%;background:' + eColor(e.label) + '"></div>').join('');
+  $('emotionLegend').innerHTML = d.emotion.map(e => '<span><i class="sw" style="background:' + eColor(e.label) + '"></i>' +
+    esc(e.label) + ' ' + rupee(e.value) + ' (' + Math.round(100 * e.value / total) + '%)</span>').join('');
+
+  $('flowSub').textContent = 'Income ' + rupee(k.income) + ', spent ' + rupee(k.total) + ', invested ' + rupee(k.invested) +
+    ', left ' + rupee(k.left) + '. Investments move money into savings, so they are counted separately from spending.';
+  bar('flowChart', ['Income', 'Spent', 'Invested', 'Left'], [k.income, k.total, k.invested, k.left],
+      [P.aqua, P.gray, P.violet, k.left < 0 ? P.orange : P.blue], false);
+  const src = d.income_sources;
+  if (src.length) bar('incomeChart', src.map(x => x.label), src.map(x => x.value), P.aqua, true);
+  else if (charts.incomeChart) { charts.incomeChart.destroy(); delete charts.incomeChart; }
+  $('investWrap').hidden = !d.investments.length;
+  $('investRows').innerHTML = d.investments.map(r => '<tr><td>' + r.date + '</td><td>' + esc(r.name) + '</td><td>' + esc(r.type) +
+    '</td><td><span class="tag">' + r.action + '</span></td><td class="n">' + rupee(r.amount) + '</td></tr>').join('');
+
+  const js = d.joy_split, jKeys = Object.keys(js);
+  const jMap = { 'Fixed bills': P.gray, 'Trip': P.blue, 'Other joyful spends': P.aqua };
+  $('joySub').textContent = rupee(k.joyful) + ' is tagged Happy or Overjoyed, but ' + rupee(js['Fixed bills']) +
+    ' of it is fixed bills. Real joyful spending is ' + rupee(k.joyful_real) + '.';
+  bar('joyChart', jKeys, jKeys.map(x => js[x]), jKeys.map(x => jMap[x]), true);
+  $('joyRows').innerHTML = d.joy_items.map(r => '<tr><td>' + r.date + '</td><td>' + esc(r.item) + '</td><td><span class="tag">' + r.group +
+    '</span></td><td>' + esc(r.force) + '</td><td>' + esc(r.emotion) + '</td><td class="n">' + rupee(r.amount) + '</td></tr>').join('');
+
+  const ti = d.trip_items;
+  $('tripSub').textContent = ti.length ? 'Trip items add up to ' + rupee(k.trip) + '. Change what counts as a trip in Settings below.'
+                                       : 'No trip items in this view. Change the trip words in Settings below.';
+  $('tripBox').hidden = !ti.length;
+  if (ti.length) { sizeBox('tripBox', ti.length); bar('tripChart', ti.map(x => x.item), ti.map(x => x.amount), ti.map(x => P.emotion[x.emotion] === P.blue || x.emotion === 'Overjoyed' ? P.blue : P.gray), true); }
+
+  $('periodTitle').textContent = d.period.title;
+  const mx = Math.max.apply(null, d.period.values.concat([0]));
+  bar('periodChart', d.period.labels, d.period.values, d.period.values.map(v => v === mx ? P.blue : P.gray), false);
+
+  const dayOpts = baseOptions(false);
+  dayOpts.scales.x.ticks = { color: css('--muted'), autoSkip: true, maxTicksLimit: 8, maxRotation: 0 };
+  draw('dayChart', { type: 'line',
+    data: { labels: d.daily.labels.map(s => s.slice(8) + '/' + s.slice(5, 7)),
+            datasets: [{ data: d.daily.values, borderColor: P.blue, backgroundColor: P.blue + '22', fill: true, tension: 0.25, pointRadius: 3, borderWidth: 2 }] },
+    options: dayOpts });
+
+  const top = d.top;
+  bar('topChart', top.map(x => x.label), top.map(x => x.value), top.map(x => x.force === 'Happiness' ? P.blue : P.gray), true);
+
+  const rg = d.regret_items;
+  $('regretSub').textContent = rg.length ? rg.length + ' entries, ' + rupee(k.regret) + ' in total.' : 'No regret spends in this view.';
+  $('regretBox').hidden = !rg.length;
+  if (rg.length) { sizeBox('regretBox', rg.length); bar('regretChart', rg.map(x => x.label), rg.map(x => x.value), P.orange, true); }
+
+  bar('catChart', d.category.map(x => x.label), d.category.map(x => x.value), [P.blue, P.gray, P.aqua, P.violet], true);
+  bar('forceChart', d.force.map(x => x.label), d.force.map(x => x.value), d.force.map(x => P.force[x.label] || P.aqua), true);
+  bar('payChart', d.payment.map(x => x.label), d.payment.map(x => x.value), P.gray, true);
+}
+
+function renderDetails() {
+  const q = $('search').value.trim().toLowerCase();
+  const rows = DATA.details.filter(r => !q || (r.item + ' ' + r.notes + ' ' + r.emotion + ' ' + r.category + ' ' + r.force).toLowerCase().includes(q));
+  const sum = rows.reduce((s, r) => s + r.amount, 0);
+  $('detailSub').textContent = rows.length + ' of ' + DATA.details.length + ' entries · ' + rupee(sum);
+  $('detailRows').innerHTML = rows.map(r => '<tr><td>' + r.date + '</td><td>' + esc(r.item) + '</td><td>' + esc(r.category) +
+    '</td><td>' + esc(r.force) + '</td><td>' + esc(r.emotion) + '</td><td>' + esc(r.payment) + '</td><td>' + esc(r.notes) +
+    '</td><td class="n">' + rupee(r.amount) + '</td></tr>').join('');
+}
+
+function fillOptions(id, items, withBlank) {
+  $(id).innerHTML = (withBlank ? '<option value="">None</option>' : '') +
+    items.map(o => '<option value="' + o.id + '">' + esc(o.label) + '</option>').join('');
+}
+
+async function loadMeta(userId) {
+  const res = await fetch('/api/meta' + (userId ? '?user_id=' + userId : ''));
+  const m = await res.json();
+  if (!res.ok) { $('app').hidden = true; say(m.error, 'err'); return false; }
+  META = m;
+  $('app').hidden = false;
+  $('userSel').innerHTML = m.users.map(u => '<option value="' + u.id + '">' + esc(u.username) + ' (' + u.expenses + ')</option>').join('');
+  $('userSel').value = m.user_id;
+  const keep = $('monthSel').value;
+  $('monthSel').innerHTML = '<option value="all">All time</option>' + m.months.map(x => '<option value="' + x + '">' + x + '</option>').join('');
+  $('monthSel').value = userId && m.months.includes(keep) ? keep : (m.months[0] || 'all');
+  fillOptions('fCategory', m.options.category || []);
+  fillOptions('fForce', m.options.driving_force || []);
+  fillOptions('fEmotion', m.options.emotion || []);
+  fillOptions('fPayment', m.options.payment_method || [], true);
+  $('cfgFixed').value = m.config.fixed.join(', ');
+  $('cfgTrip').value = m.config.trip.join(', ');
+  if (!$('fDate').value) $('fDate').value = new Date().toISOString().slice(0, 10);
+  return true;
+}
+
+async function loadData() {
+  say('');
+  const res = await fetch('/api/data?user_id=' + $('userSel').value + '&month=' + $('monthSel').value);
+  const d = await res.json();
+  if (!res.ok) { say(d.error, 'err'); return; }
+  DATA = d;
+  render(d);
+}
+
+$('userSel').addEventListener('change', async () => { await loadMeta($('userSel').value); await loadData(); });
+$('monthSel').addEventListener('change', loadData);
+$('search').addEventListener('input', () => DATA && renderDetails());
+
+$('upload').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f) return;
+  const fd = new FormData(); fd.append('file', f);
+  const res = await fetch('/upload', { method: 'POST', body: fd });
+  const d = await res.json();
+  e.target.value = '';
+  if (!res.ok) { say(d.error, 'err'); return; }
+  if (await loadMeta()) { await loadData(); say('Database loaded.', 'ok'); }
+});
+
+$('addBtn').addEventListener('click', async () => {
+  const body = { user_id: $('userSel').value, date: $('fDate').value, item: $('fItem').value, amount: $('fAmount').value,
+    category_id: $('fCategory').value, driving_force_id: $('fForce').value, emotion_id: $('fEmotion').value,
+    payment_method_id: $('fPayment').value, notes: $('fNotes').value };
+  const res = await fetch('/api/expenses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const d = await res.json();
+  if (!res.ok) { say(d.error, 'err'); return; }
+  $('fItem').value = ''; $('fAmount').value = ''; $('fNotes').value = '';
+  const month = $('fDate').value.slice(0, 7), cur = $('monthSel').value;
+  await loadMeta($('userSel').value);
+  $('monthSel').value = [...$('monthSel').options].some(o => o.value === cur) ? cur : month;
+  await loadData();
+  say('Expense saved.', 'ok');
+});
+
+$('cfgSave').addEventListener('click', async () => {
+  const split = s => s.split(',').map(x => x.trim()).filter(Boolean);
+  await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fixed: split($('cfgFixed').value), trip: split($('cfgTrip').value) }) });
+  await loadData();
+  say('Settings saved.', 'ok');
+});
+
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => DATA && render(DATA));
+(async () => { if (await loadMeta()) await loadData(); })();
+</script>
+</body>
+</html>

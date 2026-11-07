@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}Time matrix · Finance Journal{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Eisenhower matrix</p>
+    <h1 class="display">Time dashboard</h1>
+    <p class="muted small">
+      10-day cycle · {{ data.start.strftime('%d %b') }} → {{ data.finish.strftime('%d %b %Y') }}
+      {% if data.start <= today <= data.finish %}<span class="badge">Current cycle</span>{% endif %}
+    </p>
+  </div>
+  <nav class="year-switch" aria-label="Cycle">
+    <a class="btn btn-ghost btn-icon" href="{{ url_for('time_tracker.dashboard', end=data.prev_end) }}" aria-label="Previous cycle">‹</a>
+    <form method="get" class="inline" action="{{ url_for('time_tracker.dashboard') }}">
+      <input type="date" name="end" value="{{ selected.isoformat() }}" max="{{ today.isoformat() }}"
+             aria-label="Show the cycle containing this day">
+      <button class="btn btn-ghost btn-sm" type="submit">Go</button>
+    </form>
+    <a class="btn btn-ghost btn-icon" href="{{ url_for('time_tracker.dashboard', end=data.next_end) }}" aria-label="Next cycle">›</a>
+    <a class="btn btn-primary btn-sm" href="{{ url_for('time_tracker.log_day', day=(today if data.start <= today <= data.finish else selected).isoformat()) }}">+ Log a day</a>
+  </nav>
+</section>
+
+<section class="stat-row">
+  <div class="stat"><span class="stat-label">Hours logged</span>
+    <span class="stat-value">{{ data.total }}</span>
+    <span class="stat-sub">of {{ data.days | length * 20 }} possible hours</span></div>
+  <div class="stat"><span class="stat-label">Days tracked</span>
+    <span class="stat-value">{{ data.logged_days }}<span class="muted small"> / 10</span></span>
+    <span class="stat-sub">days with at least one hour</span></div>
+  <div class="stat"><span class="stat-label">Happy days</span>
+    <span class="stat-value">{{ data.happy_days }}<span class="muted small"> / {{ data.answered_days }}</span></span>
+    <span class="stat-sub">of the days you answered</span></div>
+  <div class="stat"><span class="stat-label">Schedule / Plan time</span>
+    <span class="stat-value">{{ (data.pct['NY'] * 100) | round | int }}%</span>
+    <span class="stat-sub">{{ data.hours['NY'] }} h important &amp; not urgent</span></div>
+</section>
+
+{% if data.total == 0 %}
+<section class="empty-state small">
+  <p class="big-num">◷</p>
+  <h3>Nothing logged in this cycle yet</h3>
+  <p class="muted">Open a day and write what you did each hour, then mark it urgent / important.
+    The matrix fills itself from those two answers.</p>
+  <a class="btn btn-primary" href="{{ url_for('time_tracker.log_day', day=selected.isoformat()) }}">Log {{ selected.strftime('%d %b') }}</a>
+</section>
+{% else %}
+
+<div class="card matrix-card cycle-matrix-card">
+  <h2 class="card-title">The 2×2 matrix</h2>
+  <p class="card-help muted small">Share of all logged hours in this cycle. Aim to grow the green
+    <b>Schedule / Plan</b> block — important work that is not yet urgent.</p>
+  <div class="matrix-grid">
+    {% for code, q in quadrants.items() %}
+    <div class="matrix-cell" data-q="{{ code }}">
+      <span class="matrix-code">{{ code }}</span>
+      <h3>{{ q.title }}</h3>
+      <p class="muted small">{{ q.subtitle }} · {{ q.action }}</p>
+      <p class="matrix-total"><b>{{ data.hours[code] }}</b> h
+        <span class="matrix-pct">{{ (data.pct[code] * 100) | round | int }}%</span></p>
+      <div class="matrix-bar" role="img"
+           aria-label="{{ (data.pct[code] * 100) | round | int }} percent in {{ q.title }}">
+        <span style="width: {{ (data.pct[code] * 100) | round(1) }}%"></span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="two-col time-dashboard-cols">
+  <div class="card">
+    <h2 class="card-title">Daily rhythm</h2>
+    <p class="card-help muted small">Each column is one day of the cycle; height is how much of the
+      20 waking hours you logged. Hover a block for the hour count.</p>
+    <div class="cycle-chart" role="img"
+         aria-label="Hours logged per day, split by quadrant">
+      {% for d in data.days %}
+      <a class="cycle-col{{ ' is-today' if d.is_today }}{{ ' is-empty' if not d.logged }}"
+         href="{{ url_for('time_tracker.log_day', day=d.date) }}"
+         title="{{ d.pretty }}: {{ d.logged }} h logged">
+        <span class="cycle-stack">
+          {% for code in quadrants %}
+            {% if d.hours[code] %}
+            <span class="cycle-seg" data-q="{{ code }}" style="flex: {{ d.hours[code] }}"
+                  title="{{ quadrants[code].title }}: {{ d.hours[code] }} h"></span>
+            {% endif %}
+          {% endfor %}
+          {% if d.logged < 20 %}<span class="cycle-gap" style="flex: {{ 20 - d.logged }}"></span>{% endif %}
+        </span>
+        <span class="cycle-day">{{ d.day_number }}</span>
+        <span class="cycle-label">{{ d.date[8:10] }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    <ul class="split-legend">
+      {% for code, q in quadrants.items() %}
+      <li><i class="legend-swatch" data-q="{{ code }}"></i>{{ q.title }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="card insight-card">
+    <h2 class="card-title">Schedule time vs how the days felt</h2>
+    {% if data.focus.focused_days or data.focus.other_days %}
+      <p class="card-help muted small">“Focused” days have <b>2 or more hours</b> of Schedule / Plan (NY)
+        time. This is a pattern to notice, not proof of cause.</p>
+      <div class="insight-grid">
+        <div class="insight-box">
+          <span class="insight-label">Focused days</span>
+          <span class="insight-value">{{ data.focus.focused_days }}</span>
+          <span class="muted small">{{ data.focus.focused_ny }} NY hours</span>
+        </div>
+        <div class="insight-box">
+          <span class="insight-label">Happy on focused days</span>
+          <span class="insight-value">
+            {% if data.focus.focused_happy is not none %}{{ (data.focus.focused_happy * 100) | round | int }}%{% else %}—{% endif %}
+          </span>
+          <span class="muted small">of answered days</span>
+        </div>
+        <div class="insight-box">
+          <span class="insight-label">Other tracked days</span>
+          <span class="insight-value">{{ data.focus.other_days }}</span>
+          <span class="muted small">under 2 NY hours</span>
+        </div>
+        <div class="insight-box">
+          <span class="insight-label">Happy on other days</span>
+          <span class="insight-value">
+            {% if data.focus.other_happy is not none %}{{ (data.focus.other_happy * 100) | round | int }}%{% else %}—{% endif %}
+          </span>
+          <span class="muted small">of answered days</span>
+        </div>
+      </div>
+      <div class="insight-money">
+        <p><span>Average spend on focused days</span>
+          <b>{{ (data.focus.focused_spend | inr) if data.focus.focused_spend is not none else '—' }}</b></p>
+        <p><span>Average spend on other days</span>
+          <b>{{ (data.focus.other_spend | inr) if data.focus.other_spend is not none else '—' }}</b></p>
+      </div>
+      <p class="muted small">Compare this with your money goals on the
+        <a href="{{ url_for('journal.month_view', year=selected.year, month=selected.month, tab='reflection') }}">monthly reflection</a>.</p>
+    {% else %}
+      <p class="muted">Log a few days and answer the mood question to see this comparison.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <h2 class="card-title">The 10 days</h2>
+  <div class="table-wrap">
+    <table class="data-table time-days-table">
+      <thead><tr><th>Day</th><th>Date</th><th class="num">Hours</th><th>Mood</th>
+        <th>Reflection</th><th></th></tr></thead>
+      <tbody>
+      {% for d in data.days %}
+        <tr class="{{ 'is-today' if d.is_today }}">
+          <td data-label="Day"><b>{{ d.day_number }}</b></td>
+          <td data-label="Date">{{ d.pretty }}{% if d.is_today %} <span class="badge">Today</span>{% endif %}</td>
+          <td data-label="Hours" class="num">{{ d.logged }}</td>
+          <td data-label="Mood">
+            {% if d.happy is true %}<span class="mood mood-yes">Yes</span>
+            {% elif d.happy is false %}<span class="mood mood-no">No</span>
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+          <td data-label="Reflection"><span class="cell-note">{{ d.notes or '—' }}</span></td>
+          <td class="actions">
+            {% if d.is_future %}
+              <span class="muted small">Not yet</span>
+            {% else %}
+              <a class="btn btn-ghost btn-sm" href="{{ url_for('time_tracker.log_day', day=d.date) }}">
+                {{ 'Open' if d.open else 'Log' }}</a>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

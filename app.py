@@ -20,6 +20,7 @@ import auth
 import db
 import journal
 import seed_june_2024
+import time_tracker
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -87,6 +88,7 @@ app.config.update(
 db.init_app(app)
 app.register_blueprint(auth.bp)
 app.register_blueprint(journal.bp)
+app.register_blueprint(time_tracker.bp)
 app.register_blueprint(admin.bp)
 
 

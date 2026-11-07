@@ -122,3 +122,32 @@ CREATE TABLE IF NOT EXISTS habit_checks (
     done     INTEGER NOT NULL CHECK (done IN (0, 1)),
     PRIMARY KEY (habit_id, date)
 );
+
+-- --- time tracker (Eisenhower matrix) ------------------------------------------
+-- One row per day: the end-of-day mood toggle and reflection. day_number is the
+-- position (1-10) inside the user's 10-day tracking cycle.
+CREATE TABLE IF NOT EXISTS daily_logs (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id          INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    date             TEXT    NOT NULL,                 -- ISO yyyy-mm-dd
+    day_number       INTEGER NOT NULL DEFAULT 1 CHECK (day_number BETWEEN 1 AND 10),
+    is_happy         INTEGER CHECK (is_happy IN (0, 1)),  -- NULL = not answered
+    reflection_notes TEXT    NOT NULL DEFAULT '',
+    created_at       TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_daily_logs_user_date ON daily_logs (user_id, date);
+
+-- One row per hour the user filled in. classification is derived from the two
+-- flags: 1st letter = urgent (Y/N), 2nd letter = important (Y/N).
+CREATE TABLE IF NOT EXISTS hourly_tasks (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    daily_log_id     INTEGER NOT NULL REFERENCES daily_logs (id) ON DELETE CASCADE,
+    time_slot        TEXT    NOT NULL,                 -- e.g. 4am-5am, 11pm-12am
+    task_description TEXT    NOT NULL DEFAULT '',
+    is_urgent        INTEGER NOT NULL DEFAULT 0 CHECK (is_urgent IN (0, 1)),
+    is_important     INTEGER NOT NULL DEFAULT 0 CHECK (is_important IN (0, 1)),
+    classification   TEXT    NOT NULL DEFAULT 'NN' CHECK (classification IN ('YY', 'NY', 'YN', 'NN')),
+    UNIQUE (daily_log_id, time_slot)
+);

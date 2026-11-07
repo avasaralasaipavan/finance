@@ -57,6 +57,17 @@ Open http://127.0.0.1:5000
 - CSV downloads for each month's expenses, income and investments.
 - Light and dark mode. Works on phones.
 
+**Time tracker (Eisenhower matrix)**
+- **Daily log:** 20 waking hours (4:00 AM → 12:00 AM). Write what you did each hour and mark it
+  **Urgent** and/or **Important**. Each hour is sorted into one of the four Eisenhower quadrants:
+  **Do First (YY)**, **Schedule / Plan (NY)**, **Delegate / Limit (YN)** and **Eliminate (NN)**.
+  The 2×2 summary and the hour count update live as you type.
+- **End-of-day reflection:** a happy / not happy toggle and a free-text "why?" note.
+- **10-day dashboard:** the current tracking cycle (10-day blocks counted from your first log) with
+  hours and percentages per quadrant, a day-by-day rhythm chart, each day's mood and reflection,
+  and a comparison of days with 2+ hours of Schedule / Plan time against the rest.
+- Days can be opened from the past to fill in what you missed; future hours can't be logged.
+
 **Admin**
 - **Dashboard:** app-wide totals only (users, active this month, entries per day, sign-ups, most-used values). Admins can't see individual users' expenses.
 - **Dropdowns:** add, rename, reorder, hide/show and delete the values for Category, Driving Force, Emotion, Payment Method, Income Source and Investment Type.
@@ -96,14 +107,17 @@ For production, run it with a WSGI server, for example `waitress-serve app:app`,
 app.py              app factory, CSRF, CLI commands (create-admin, seed-june)
 auth.py             login / signup / admin signup / logout, access decorators
 journal.py          cover, year + month pages, portfolio, JSON API, CSV exports
+time_tracker.py     daily 20-hour log and the 10-day Eisenhower matrix dashboard
 admin.py            dashboard, dropdown manager, users, settings
 db.py               SQLite queries, validation, tallies
-schema.sql          tables: users, options, expenses, incomes, investments, holding_values, months, settings
+schema.sql          tables: users, options, expenses, incomes, investments, holding_values, months,
+                    habits, habit_checks, daily_logs, hourly_tasks, settings
 seed_june_2024.py   June 2024 entries transcribed from the PDF
-templates/          Jinja pages (auth/, admin/, errors/)
+templates/          Jinja pages (auth/, admin/, errors/, time/)
 static/css/         styles (green theme from the PDF, light + dark)
 static/js/          3D: three-common.js, bg3d.js, cover3d.js, auth3d.js, bars3d.js, money3d.js,
-                    donut3d.js, jar3d.js, admin3d.js; UI: ui3d.js, month.js, charts.js, admin.js
+                    donut3d.js, jar3d.js, admin3d.js; UI: ui3d.js, month.js, charts.js, admin.js,
+                    timetracker.js
 ```
 
 Three.js and Chart.js load from a CDN, so the browser needs internet access.
