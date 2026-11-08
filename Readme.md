@@ -62,10 +62,19 @@ Open http://127.0.0.1:5000
   **Urgent** and/or **Important**. Each hour is sorted into one of the four Eisenhower quadrants:
   **Do First (YY)**, **Schedule / Plan (NY)**, **Delegate / Limit (YN)** and **Eliminate (NN)**.
   The 2×2 summary and the hour count update live as you type.
+- **Autosave:** every change saves itself a moment after you stop typing (the page also works
+  without JavaScript via the **Save day** button). A status pill shows unsaved / saving / saved.
+- **Made for a phone:** filled hours and the current hour stay open; the rest fold to a single
+  line, so the whole day fits on one screen. Tap an hour to open it. A day strip jumps between the
+  ten days of the cycle, **Now** scrolls to the current hour, and Enter moves to the next hour.
 - **End-of-day reflection:** a happy / not happy toggle and a free-text "why?" note.
 - **10-day dashboard:** the current tracking cycle (10-day blocks counted from your first log) with
-  hours and percentages per quadrant, a day-by-day rhythm chart, each day's mood and reflection,
-  and a comparison of days with 2+ hours of Schedule / Plan time against the rest.
+  hours and percentages per quadrant, a cycle-over-cycle change in Schedule / Plan time, an
+  hour-of-day chart, most repeated activities, each day's mood and reflection, and a comparison of
+  days with 2+ hours of Schedule / Plan time against the rest.
+- **All-time analysis:** totals, quadrant share, hour-of-day and weekday patterns, repeated
+  activities, a cycle-by-cycle table, average spend and Schedule / Plan time on happy vs unhappy
+  days, and a month-by-month money table beside your Schedule / Plan share.
 - Days can be opened from the past to fill in what you missed; future hours can't be logged.
 
 **Admin**
@@ -107,7 +116,7 @@ For production, run it with a WSGI server, for example `waitress-serve app:app`,
 app.py              app factory, CSRF, CLI commands (create-admin, seed-june)
 auth.py             login / signup / admin signup / logout, access decorators
 journal.py          cover, year + month pages, portfolio, JSON API, CSV exports
-time_tracker.py     daily 20-hour log and the 10-day Eisenhower matrix dashboard
+time_tracker.py     daily 20-hour log, 10-day Eisenhower dashboard, all-time analysis, autosave API
 admin.py            dashboard, dropdown manager, users, settings
 db.py               SQLite queries, validation, tallies
 schema.sql          tables: users, options, expenses, incomes, investments, holding_values, months,

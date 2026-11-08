@@ -1,110 +1,167 @@
 {% extends "base.html" %}
-{% block title %}Time log · {{ log_date.strftime('%d %b %Y') }} · Finance Journal{% endblock %}
+{% block title %}Log {{ log_date.strftime('%a %d %b') }} · Time · Finance Journal{% endblock %}
 {% block content %}
-<section class="page-head">
-  <div>
-    <p class="eyebrow"><a href="{{ url_for('time_tracker.dashboard') }}">Time tracker</a></p>
-    <h1 class="display">{{ log_date.strftime('%d %b') }}</h1>
+<section class="tt-page-head">
+  <div class="tt-title">
+    <p class="eyebrow">
+      <a href="{{ url_for('time_tracker.dashboard') }}">Time tracker</a>
+      {% if is_today %} · Today{% endif %}
+    </p>
+    <h1 class="display">{{ log_date.strftime('%a %d %b') }}</h1>
     <p class="muted small">
-      {{ log_date.strftime('%A, %d %B %Y') }} · Day {{ log.day_number }} of this 10-day cycle ·
-      <span data-logged-count>{{ logged_hours }}</span> of {{ slot_count }} waking hours logged
+      <span data-logged-count>{{ logged_hours }}</span> of {{ slot_count }} waking hours ·
+      day {{ log.day_number }} of 10
     </p>
   </div>
-  <nav class="year-switch" aria-label="Day">
-    <a class="btn btn-ghost btn-icon" href="{{ url_for('time_tracker.log_day', day=prev_day) }}" aria-label="Previous day">‹</a>
-    <form method="get" class="inline" action="{{ url_for('time_tracker.log_jump') }}" data-date-jump>
+  <div class="tt-head-btns">
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('time_tracker.log_day', day=prev_day) }}"
+       aria-label="Previous day">‹</a>
+    {% if is_today %}
+      <span class="btn btn-ghost btn-sm is-disabled" aria-hidden="true">›</span>
+    {% else %}
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('time_tracker.log_day', day=next_day) }}"
+         aria-label="Next day">›</a>
+    {% endif %}
+    <form method="get" class="inline tt-date-jump" action="{{ url_for('time_tracker.log_jump') }}"
+          data-date-jump>
       <input type="date" name="day" value="{{ log_date.isoformat() }}" max="{{ today.isoformat() }}"
              aria-label="Jump to a day">
-      <button class="btn btn-ghost btn-sm" type="submit">Go</button>
     </form>
-    {% if is_today %}
-      <button class="btn btn-ghost btn-icon" type="button" disabled aria-label="Next day">›</button>
-    {% else %}
-      <a class="btn btn-ghost btn-icon" href="{{ url_for('time_tracker.log_day', day=next_day) }}" aria-label="Next day">›</a>
+    {% if now_slot and is_today %}
+      <button type="button" class="btn btn-ghost btn-sm tt-now-btn" data-now>Now</button>
     {% endif %}
-    <a class="btn btn-ghost btn-sm" href="{{ url_for('time_tracker.dashboard', end=log_date.isoformat()) }}">Dashboard</a>
-  </nav>
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('time_tracker.analysis') }}">Analysis</a>
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('time_tracker.dashboard', end=log_date.isoformat()) }}">Cycle</a>
+  </div>
 </section>
 
-<form method="post" class="time-log-form" id="time-log-form"
-      action="{{ url_for('time_tracker.log_day', day=log_date.isoformat()) }}">
+<nav class="tt-cycle-strip" aria-label="Days in this cycle">
+  {% for d in cycle_days %}
+    {% if d.is_future %}
+      <span class="tt-day is-future" aria-disabled="true" title="Not yet">
+        <b>{{ d.day_number }}</b><span>{{ d.weekday }}</span><i>{{ d.day }}</i>
+      </span>
+    {% else %}
+      <a class="tt-day{{ ' is-active' if d.date == log_date.isoformat() }}{{ ' is-today' if d.is_today }}"
+         href="{{ url_for('time_tracker.log_day', day=d.date) }}"
+         title="{{ d.logged }} hours logged">
+        <b>{{ d.day_number }}</b><span>{{ d.weekday }}</span><i>{{ d.day }}</i>
+        <em class="tt-day-fill" style="height: {{ (d.logged / slot_count * 100) | round }}%"></em>
+      </a>
+    {% endif %}
+  {% endfor %}
+</nav>
+
+<form method="post" class="tt-form" id="time-log-form"
+      action="{{ url_for('time_tracker.log_day', day=log_date.isoformat()) }}"
+      data-api="{{ api_url }}" data-now-slot="{{ now_slot or '' }}"
+      data-quadrants="{{ quadrants | tojson | forceescape }}"
+      data-saved="{{ 'yes' if not is_new else '' }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-  <div class="two-col time-top">
-    <div class="card matrix-card">
-      <h2 class="card-title">This day's matrix</h2>
-      <p class="card-help muted small">Only hours with a task written in count. Pick <b>Urgent</b> and
-        <b>Important</b> on each row and the totals update as you type.</p>
-      <div class="matrix-grid" id="time-matrix">
-        {% for code, q in quadrants.items() %}
-        <div class="matrix-cell" data-q="{{ code }}">
-          <span class="matrix-code">{{ code }}</span>
-          <h3>{{ q.title }}</h3>
-          <p class="muted small">{{ q.subtitle }}</p>
-          <p class="matrix-total"><b data-hours="{{ code }}">{{ hours[code] }}</b> h
-            <span class="matrix-pct" data-pct="{{ code }}">{{ (pct[code] * 100) | round | int }}%</span></p>
-        </div>
-        {% endfor %}
+  <section class="card tt-glance">
+    <div class="tt-glance-head">
+      <div>
+        <h2 class="card-title">Day at a glance</h2>
+        <p class="muted small">Write what each hour was for, then tap Urgent / Important.
+          Everything saves by itself.</p>
       </div>
+      <span class="tt-status" data-save-status data-tone="saved">
+        {{ 'All changes saved' if not is_new else 'Not saved yet' }}
+      </span>
     </div>
 
-    <div class="card reflection-card">
-      <h2 class="card-title">End-of-day reflection</h2>
-      <fieldset class="chip-group happy-choice">
-        <legend>Happy / satisfied with today?</legend>
-        <div class="chips">
-          <label class="chip"><input type="radio" name="is_happy" value="yes"
-            {{ 'checked' if log.happy is true }}><span>Yes</span></label>
-          <label class="chip"><input type="radio" name="is_happy" value="no"
-            {{ 'checked' if log.happy is false }}><span>No</span></label>
-          <label class="chip chip-none"><input type="radio" name="is_happy" value=""
-            {{ 'checked' if log.happy is none }}><span>Not answered</span></label>
-        </div>
-      </fieldset>
-      <label class="field">
-        <span>Why do you feel this way? <small class="muted">(optional)</small></span>
-        <textarea name="reflection_notes" rows="6" maxlength="5000"
-          placeholder="What shaped today? What would you change tomorrow?">{{ log.reflection_notes }}</textarea>
-      </label>
-    </div>
-  </div>
-
-  <div class="card time-table-card">
-    <div class="list-head">
-      <h2>Hour by hour</h2>
-      <span class="muted small">4:00 AM → 12:00 AM</span>
-    </div>
-    <div class="time-grid" id="time-grid">
-      <div class="time-grid-head" aria-hidden="true">
-        <span>Hour</span><span>What did you do?</span><span>Urgent</span><span>Important</span><span>Quadrant</span>
-      </div>
-      {% for slot in log.slots %}
-      <div class="time-row{{ ' is-filled' if slot.logged }}" data-time-row data-slot="{{ slot.key }}">
-        <span class="time-slot">{{ slot.label }}</span>
-        <label class="time-task">
-          <span class="sr-only">Task for {{ slot.label }}</span>
-          <input name="task_{{ slot.key }}" maxlength="300" autocomplete="off"
-                 placeholder="What did you do?" value="{{ slot.task_description }}">
-        </label>
-        <label class="time-toggle time-urgent">
-          <input type="checkbox" name="urgent_{{ slot.key }}" value="1"
-                 {{ 'checked' if slot.is_urgent }}><span>Urgent</span>
-        </label>
-        <label class="time-toggle time-important">
-          <input type="checkbox" name="important_{{ slot.key }}" value="1"
-                 {{ 'checked' if slot.is_important }}><span>Important</span>
-        </label>
-        <span class="quad-pill{{ '' if slot.logged else ' is-idle' }}" data-pill
-              data-q="{{ slot.classification }}"
-              title="{{ quadrants[slot.classification].title }}">{{ slot.classification if slot.logged else '—' }}</span>
-      </div>
+    <div class="tt-split" data-split aria-hidden="true">
+      {% for code in quadrants %}
+        <span data-q="{{ code }}" style="width: {{ (pct[code] * 100) | round(1) }}%"></span>
       {% endfor %}
     </div>
-    <div class="time-actions">
-      <button class="btn btn-primary btn-lg" type="submit">Save day</button>
-      <a class="btn btn-ghost" href="{{ url_for('time_tracker.dashboard', end=log_date.isoformat()) }}">See the 10-day dashboard</a>
-      <span class="muted small" data-dirty-hint aria-live="polite"></span>
+
+    <div class="tt-matrix">
+      {% for code, q in quadrants.items() %}
+        <div class="tt-matrix-cell" data-q="{{ code }}">
+          <span class="tt-matrix-code">{{ code }}</span>
+          <span class="tt-matrix-title">{{ q.title }}</span>
+          <span class="tt-matrix-num"><b data-hours="{{ code }}">{{ hours[code] }}</b> h
+            <em data-pct="{{ code }}">{{ (pct[code] * 100) | round | int }}%</em></span>
+        </div>
+      {% endfor %}
     </div>
+
+    <fieldset class="chip-group tt-mood">
+      <legend>How did the day feel?</legend>
+      <div class="chips">
+        <label class="chip"><input type="radio" name="is_happy" value="yes"
+          {{ 'checked' if log.happy is true }}><span>Happy</span></label>
+        <label class="chip"><input type="radio" name="is_happy" value="no"
+          {{ 'checked' if log.happy is false }}><span>Not happy</span></label>
+        <label class="chip chip-none"><input type="radio" name="is_happy" value=""
+          {{ 'checked' if log.happy is none }}><span>Skip</span></label>
+      </div>
+    </fieldset>
+
+    <details class="tt-reflection" {{ 'open' if log.reflection_notes }}>
+      <summary>Reflection note{% if log.reflection_notes %} · added{% endif %}</summary>
+      <label class="field">
+        <span class="sr-only">Reflection note</span>
+        <textarea name="reflection_notes" rows="3" maxlength="5000"
+          placeholder="What shaped today? What would you change tomorrow?">{{ log.reflection_notes }}</textarea>
+      </label>
+    </details>
+  </section>
+
+  <section class="tt-hours" id="time-grid">
+    {% for slot in log.slots %}
+      {% if slot.hour == 4 %}
+        <h2 class="tt-group"><span>Morning</span><small>4 AM – 12 PM</small></h2>
+      {% elif slot.hour == 12 %}
+        <h2 class="tt-group"><span>Afternoon</span><small>12 PM – 5 PM</small></h2>
+      {% elif slot.hour == 17 %}
+        <h2 class="tt-group"><span>Evening</span><small>5 PM – 9 PM</small></h2>
+      {% elif slot.hour == 21 %}
+        <h2 class="tt-group"><span>Night</span><small>9 PM – 12 AM</small></h2>
+      {% endif %}
+
+      <div class="tt-row{{ ' is-filled' if slot.logged }}{{ ' has-data' if slot.logged or slot.is_urgent or slot.is_important }}{{ ' is-now' if slot.key == now_slot and is_today }}"
+           data-time-row data-slot="{{ slot.key }}" data-hour="{{ slot.hour }}">
+        <div class="tt-row-head">
+          <span class="tt-hour">{{ slot.label }}</span>
+          <span class="tt-preview" data-preview>{{ slot.task_description }}</span>
+          <span class="quad-pill{{ '' if slot.logged else ' is-idle' }}" data-pill
+                data-q="{{ slot.classification }}"
+                title="{{ quadrants[slot.classification].title }}">{{ slot.classification if slot.logged else '—' }}</span>
+          <button type="button" class="tt-expand" data-expand aria-expanded="true"
+                  aria-controls="hour-{{ slot.key }}">
+            <span class="tt-chevron" aria-hidden="true">▾</span>
+            <span class="sr-only">Show or hide this hour</span>
+          </button>
+        </div>
+        <div class="tt-row-body" id="hour-{{ slot.key }}" data-row-body>
+          <input class="tt-task" data-task name="task_{{ slot.key }}" maxlength="300"
+                 autocomplete="off" inputmode="text" placeholder="What happened this hour?"
+                 aria-label="Task for {{ slot.label }}" value="{{ slot.task_description }}">
+          <div class="tt-toggles">
+            <label class="tt-toggle tt-urgent">
+              <input type="checkbox" data-urgent name="urgent_{{ slot.key }}" value="1"
+                     {{ 'checked' if slot.is_urgent }}><span>Urgent</span>
+            </label>
+            <label class="tt-toggle tt-important">
+              <input type="checkbox" data-important name="important_{{ slot.key }}" value="1"
+                     {{ 'checked' if slot.is_important }}><span>Important</span>
+            </label>
+            <button type="button" class="tt-clear" data-clear
+                    aria-label="Clear {{ slot.label }}">Clear</button>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </section>
+
+  <div class="tt-savebar" data-savebar>
+    <span class="tt-status" data-save-status data-tone="saved">
+      {{ 'All changes saved' if not is_new else 'Not saved yet' }}
+    </span>
+    <button class="btn btn-primary btn-lg" type="submit">Save day</button>
   </div>
 </form>
 {% endblock %}

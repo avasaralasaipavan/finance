@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Time matrix · Finance Journal{% endblock %}
+{% block title %}Time dashboard · Finance Journal{% endblock %}
 {% block content %}
 <section class="page-head">
   <div>
@@ -18,6 +18,7 @@
       <button class="btn btn-ghost btn-sm" type="submit">Go</button>
     </form>
     <a class="btn btn-ghost btn-icon" href="{{ url_for('time_tracker.dashboard', end=data.next_end) }}" aria-label="Next cycle">›</a>
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('time_tracker.analysis') }}">All-time analysis</a>
     <a class="btn btn-primary btn-sm" href="{{ url_for('time_tracker.log_day', day=(today if data.start <= today <= data.finish else selected).isoformat()) }}">+ Log a day</a>
   </nav>
 </section>
@@ -48,15 +49,25 @@
 {% else %}
 
 <div class="card matrix-card cycle-matrix-card">
-  <h2 class="card-title">The 2×2 matrix</h2>
-  <p class="card-help muted small">Share of all logged hours in this cycle. Aim to grow the green
-    <b>Schedule / Plan</b> block — important work that is not yet urgent.</p>
+  <div class="tt-card-head">
+    <div>
+      <h2 class="card-title">The 2×2 matrix</h2>
+      <p class="card-help muted small">Share of all logged hours in this cycle. Aim to grow the green
+        <b>Schedule / Plan</b> block — important work that is not yet urgent.</p>
+    </div>
+    {% set ny_delta = ((data.pct['NY'] - data.previous.pct['NY']) * 100) | round | int %}
+    {% if data.previous.total %}
+      <span class="tt-delta {{ 'is-up' if ny_delta > 0 }}{{ ' is-down' if ny_delta < 0 }}">
+        {{ '+' if ny_delta > 0 }}{{ ny_delta }} pts NY vs last cycle
+      </span>
+    {% endif %}
+  </div>
   <div class="matrix-grid">
     {% for code, q in quadrants.items() %}
     <div class="matrix-cell" data-q="{{ code }}">
       <span class="matrix-code">{{ code }}</span>
       <h3>{{ q.title }}</h3>
-      <p class="muted small">{{ q.subtitle }} · {{ q.action }}</p>
+      <p class="muted small">{{ q.subtitle }}</p>
       <p class="matrix-total"><b>{{ data.hours[code] }}</b> h
         <span class="matrix-pct">{{ (data.pct[code] * 100) | round | int }}%</span></p>
       <div class="matrix-bar" role="img"
@@ -68,13 +79,59 @@
   </div>
 </div>
 
-<div class="two-col time-dashboard-cols">
+<div class="two-col tt-dashboard-cols">
+  <div class="card">
+    <h2 class="card-title">When your hours go</h2>
+    <p class="card-help muted small">Each bar is one waking hour, stacked by quadrant and summed
+      across the cycle. The tallest bars are where your time actually lives.</p>
+    {% set peak = data.hour_pattern | map(attribute='total') | max %}
+    <div class="tt-hour-chart" role="img" aria-label="Hours logged per hour of the day, split by quadrant">
+      {% for s in data.hour_pattern %}
+      <div class="tt-hour-col{{ ' is-peak' if peak and s.total == peak }}"
+           title="{{ s.label }}: {{ s.total }} h logged">
+        <span class="tt-hour-bar" style="height: {{ ((s.total / (peak or 1)) * 100) | round(1) }}%">
+          <span class="tt-hour-stack">
+            {% for code in quadrants %}
+              {% if s.hours[code] %}
+              <span class="tt-hour-seg" data-q="{{ code }}" style="flex: {{ s.hours[code] }}"></span>
+              {% endif %}
+            {% endfor %}
+          </span>
+        </span>
+        <span class="tt-hour-label">{{ s.hour % 12 or 12 }}{{ 'a' if s.hour < 12 else 'p' }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <ul class="split-legend">
+      {% for code, q in quadrants.items() %}
+      <li><i class="legend-swatch" data-q="{{ code }}"></i>{{ q.title }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">What the numbers say</h2>
+    {% if data.insights %}
+      <div class="tt-insights">
+        {% for i in data.insights %}
+        <div class="tt-insight">
+          <span>{{ i.label }}</span>
+          <p>{{ i.text }}</p>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="muted">Log a few hours to see patterns here.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="two-col tt-dashboard-cols">
   <div class="card">
     <h2 class="card-title">Daily rhythm</h2>
     <p class="card-help muted small">Each column is one day of the cycle; height is how much of the
       20 waking hours you logged. Hover a block for the hour count.</p>
-    <div class="cycle-chart" role="img"
-         aria-label="Hours logged per day, split by quadrant">
+    <div class="cycle-chart" role="img" aria-label="Hours logged per day, split by quadrant">
       {% for d in data.days %}
       <a class="cycle-col{{ ' is-today' if d.is_today }}{{ ' is-empty' if not d.logged }}"
          href="{{ url_for('time_tracker.log_day', day=d.date) }}"
@@ -145,8 +202,49 @@
   </div>
 </div>
 
+<div class="two-col tt-dashboard-cols">
+  <div class="card">
+    <h2 class="card-title">Most repeated activities</h2>
+    {% if data.top_tasks %}
+      <ul class="tt-top-list">
+        {% for t in data.top_tasks %}
+        <li>
+          <span class="tt-top-label">{{ t.label }}</span>
+          <span class="tt-top-hours">{{ t.hours }} h</span>
+          <span class="tt-top-bar"><i style="width: {{ (t.pct * 100) | round(1) }}%"></i></span>
+        </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted">Write a few hours to see what keeps repeating.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">This cycle vs the last</h2>
+    {% if data.previous.total %}
+      {% set prev = data.previous %}
+      <div class="tt-compare">
+        <div><span>Hours logged</span><b>{{ data.total }}</b><em>{{ prev.total }}</em></div>
+        <div><span>Days tracked</span><b>{{ data.logged_days }}</b><em>{{ prev.logged_days }}</em></div>
+        <div><span>Schedule / Plan</span><b>{{ (data.pct['NY'] * 100) | round | int }}%</b>
+          <em>{{ (prev.pct['NY'] * 100) | round | int }}%</em></div>
+        <div><span>Happy rate</span>
+          <b>{% if data.answered_days %}{{ (data.happy_days / data.answered_days * 100) | round | int }}%{% else %}—{% endif %}</b>
+          <em>{% if prev.happy_rate is not none %}{{ (prev.happy_rate * 100) | round | int }}%{% else %}—{% endif %}</em></div>
+      </div>
+      <p class="muted small tt-compare-legend"><b>This cycle</b> · previous cycle</p>
+    {% else %}
+      <p class="muted">This is your first tracked cycle — there is nothing to compare yet.</p>
+    {% endif %}
+  </div>
+</div>
+
 <div class="card">
-  <h2 class="card-title">The 10 days</h2>
+  <div class="tt-card-head">
+    <h2 class="card-title">The 10 days</h2>
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('time_tracker.analysis') }}">See all-time analysis →</a>
+  </div>
   <div class="table-wrap">
     <table class="data-table time-days-table">
       <thead><tr><th>Day</th><th>Date</th><th class="num">Hours</th><th>Mood</th>

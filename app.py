@@ -89,6 +89,7 @@ db.init_app(app)
 app.register_blueprint(auth.bp)
 app.register_blueprint(journal.bp)
 app.register_blueprint(time_tracker.bp)
+app.register_blueprint(time_tracker.api_bp)
 app.register_blueprint(admin.bp)
 
 

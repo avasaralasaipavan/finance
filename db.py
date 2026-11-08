@@ -954,6 +954,7 @@ def get_time_log(user_id, iso_date):
         log["slots"].append({
             "key": slot["key"],
             "label": slot["label"],
+            "hour": slot["hour"],
             "task_description": t["task_description"] if t else "",
             "is_urgent": bool(t["is_urgent"]) if t else False,
             "is_important": bool(t["is_important"]) if t else False,
@@ -965,8 +966,22 @@ def get_time_log(user_id, iso_date):
     return log
 
 
-def save_time_log(user_id, iso_date, form):
-    """Upsert the day's 20 slots plus the mood and reflection from a submitted form."""
+def _truthy(value):
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return bool(value)
+
+
+def _mood_value(value):
+    if value is True:
+        return 1
+    if value is False:
+        return 0
+    return {"yes": 1, "no": 0}.get(str(value or "").strip().lower())
+
+
+def _write_time_log(user_id, iso_date, mood, notes, slots):
+    """Shared upsert: slots maps each time-slot key to its description and flags."""
     _parse_iso_date(iso_date)
     db = get_db()
     db.execute(
@@ -975,16 +990,16 @@ def save_time_log(user_id, iso_date, form):
     log_id = db.execute(
         "SELECT id FROM daily_logs WHERE user_id = ? AND date = ?", (user_id, iso_date)
     ).fetchone()["id"]
-    mood = {"yes": 1, "no": 0}.get(str(form.get("is_happy") or ""))
     db.execute(
         "UPDATE daily_logs SET is_happy = ?, reflection_notes = ? WHERE id = ?",
-        (mood, str(form.get("reflection_notes") or "").strip()[:5000], log_id),
+        (mood, str(notes or "").strip()[:5000], log_id),
     )
     for slot in TIME_SLOTS:
         key = slot["key"]
-        desc = str(form.get(f"task_{key}") or "").strip()[:300]
-        urgent = form.get(f"urgent_{key}") == "1"
-        important = form.get(f"important_{key}") == "1"
+        item = slots.get(key) or {}
+        desc = str(item.get("task_description") or "").strip()[:300]
+        urgent = _truthy(item.get("is_urgent"))
+        important = _truthy(item.get("is_important"))
         if not desc and not urgent and not important:
             db.execute("DELETE FROM hourly_tasks WHERE daily_log_id = ? AND time_slot = ?",
                        (log_id, key))
@@ -1003,6 +1018,33 @@ def save_time_log(user_id, iso_date, form):
     db.commit()
 
 
+def save_time_log(user_id, iso_date, form):
+    """Save the day's 20 slots, mood and reflection from the HTML form."""
+    slots = {}
+    for slot in TIME_SLOTS:
+        key = slot["key"]
+        slots[key] = {
+            "task_description": form.get(f"task_{key}") or "",
+            "is_urgent": form.get(f"urgent_{key}") == "1",
+            "is_important": form.get(f"important_{key}") == "1",
+        }
+    _write_time_log(user_id, iso_date, _mood_value(form.get("is_happy")),
+                    form.get("reflection_notes"), slots)
+
+
+def save_time_log_json(user_id, iso_date, data):
+    """Save the same data from the autosave JSON payload."""
+    if not isinstance(data, dict):
+        raise ValidationError("Expected a JSON object.")
+    raw = data.get("slots")
+    slots = {}
+    for slot in TIME_SLOTS:
+        item = raw.get(slot["key"]) if isinstance(raw, dict) else None
+        slots[slot["key"]] = item if isinstance(item, dict) else {}
+    _write_time_log(user_id, iso_date, _mood_value(data.get("is_happy")),
+                    data.get("reflection_notes"), slots)
+
+
 def _daily_money(user_id, start, end):
     """Spent and net-invested per day over a date range, for the cycle dashboard."""
     spend, invest = {}, {}
@@ -1018,6 +1060,249 @@ def _daily_money(user_id, start, end):
     ):
         invest[r["date"]] = r["total"]
     return spend, invest
+
+
+def _logged_rows(user_id, start=None, end=None):
+    """Every filled hour (with its day, quadrant and mood), oldest first."""
+    sql = ("SELECT d.date AS date, d.is_happy AS is_happy, t.time_slot AS slot,"
+           " t.classification AS q, t.task_description AS task"
+           " FROM hourly_tasks t JOIN daily_logs d ON d.id = t.daily_log_id"
+           " WHERE d.user_id = ? AND TRIM(t.task_description) != ''")
+    params = [user_id]
+    if start:
+        sql += " AND d.date >= ?"
+        params.append(start)
+    if end:
+        sql += " AND d.date <= ?"
+        params.append(end)
+    sql += " ORDER BY d.date, t.time_slot"
+    return [dict(r) for r in get_db().execute(sql, params)]
+
+
+def _quadrant_hours(rows):
+    hours = {q: 0 for q in QUADRANTS}
+    for r in rows:
+        hours[r["q"]] = hours.get(r["q"], 0) + 1
+    return hours
+
+
+def _pct(hours):
+    total = sum(hours.values())
+    return {q: (hours[q] / total if total else 0.0) for q in QUADRANTS}
+
+
+def _hour_pattern(rows):
+    """How each of the 20 waking hours is spent, across the rows given."""
+    counts = {slot["key"]: {q: 0 for q in QUADRANTS} for slot in TIME_SLOTS}
+    for r in rows:
+        bucket = counts.get(r["slot"])
+        if bucket is not None:
+            bucket[r["q"]] = bucket.get(r["q"], 0) + 1
+    return [
+        {"key": slot["key"], "label": slot["label"], "hour": slot["hour"],
+         "total": sum(counts[slot["key"]].values()), "hours": counts[slot["key"]]}
+        for slot in TIME_SLOTS
+    ]
+
+
+def _top_tasks(rows, limit=8):
+    """Repeated activities, matched case- and whitespace-insensitively."""
+    seen = {}
+    for r in rows:
+        label = " ".join(str(r["task"]).split())
+        if not label:
+            continue
+        key = label.casefold()
+        entry = seen.setdefault(key, {"label": label, "hours": 0})
+        entry["hours"] += 1
+    ranked = sorted(seen.values(), key=lambda e: (-e["hours"], e["label"].lower()))
+    total = len(rows)
+    for e in ranked:
+        e["pct"] = e["hours"] / total if total else 0.0
+    return ranked[:limit]
+
+
+def cycle_strip(user_id, iso_date, today):
+    """The 10 days of the cycle containing iso_date, for the quick day switcher."""
+    start, finish = cycle_bounds(user_id, iso_date)
+    counts = {r[0]: r[1] for r in get_db().execute(
+        "SELECT d.date, COUNT(*) FROM hourly_tasks t"
+        " JOIN daily_logs d ON d.id = t.daily_log_id"
+        " WHERE d.user_id = ? AND d.date BETWEEN ? AND ? AND TRIM(t.task_description) != ''"
+        " GROUP BY d.date", (user_id, start.isoformat(), finish.isoformat()))}
+    return [
+        {"date": (start + timedelta(days=i)).isoformat(),
+         "day_number": i + 1,
+         "weekday": (start + timedelta(days=i)).strftime("%a"),
+         "day": (start + timedelta(days=i)).day,
+         "logged": counts.get((start + timedelta(days=i)).isoformat(), 0),
+         "is_today": (start + timedelta(days=i)) == today,
+         "is_future": (start + timedelta(days=i)) > today}
+        for i in range(CYCLE_DAYS)
+    ]
+
+
+def _cycle_summary(user_id, start, finish):
+    """A compact snapshot of one 10-day cycle (used for cycle-over-cycle comparison)."""
+    rows = _logged_rows(user_id, start.isoformat(), finish.isoformat())
+    hours = _quadrant_hours(rows)
+    total = sum(hours.values())
+    moods = [r[0] for r in get_db().execute(
+        "SELECT is_happy FROM daily_logs WHERE user_id = ? AND date BETWEEN ? AND ?"
+        " AND is_happy IS NOT NULL", (user_id, start.isoformat(), finish.isoformat()))]
+    return {
+        "start": start,
+        "finish": finish,
+        "total": total,
+        "hours": hours,
+        "pct": _pct(hours),
+        "logged_days": len({r["date"] for r in rows}),
+        "happy_rate": (sum(moods) / len(moods)) if moods else None,
+    }
+
+
+def _cycle_totals(user_id, today, count=8):
+    """The last `count` cycles (oldest first) with their totals, for trend lines."""
+    anchor = _cycle_anchor(user_id)
+    if not anchor:
+        return []
+    anchor_day = date.fromisoformat(anchor)
+    if today < anchor_day:
+        return []
+    span = (today - anchor_day).days // CYCLE_DAYS
+    first = max(0, span - count + 1)
+    cycles = []
+    for n in range(first, span + 1):
+        start = anchor_day + timedelta(days=n * CYCLE_DAYS)
+        finish = start + timedelta(days=CYCLE_DAYS - 1)
+        summary = _cycle_summary(user_id, start, finish)
+        summary["number"] = n + 1
+        cycles.append(summary)
+    return cycles
+
+
+def _mood_money(user_id, rows):
+    """Average spend and Schedule / Plan time on happy vs unhappy days (all time)."""
+    spend = {r["date"]: r["total"] for r in get_db().execute(
+        "SELECT date, SUM(amount) AS total FROM expenses WHERE user_id = ? GROUP BY date",
+        (user_id,))}
+    ny = {}
+    for r in rows:
+        ny[r["date"]] = ny.get(r["date"], 0) + (1 if r["q"] == "NY" else 0)
+    groups = {True: [], False: []}
+    for r in get_db().execute(
+        "SELECT date, is_happy FROM daily_logs WHERE user_id = ? AND is_happy IS NOT NULL",
+        (user_id,)
+    ):
+        groups[bool(r["is_happy"])].append((spend.get(r["date"], 0.0), ny.get(r["date"], 0)))
+
+    def pack(group):
+        if not group:
+            return {"days": 0, "avg_spend": None, "avg_ny": None}
+        return {
+            "days": len(group),
+            "avg_spend": sum(g[0] for g in group) / len(group),
+            "avg_ny": sum(g[1] for g in group) / len(group),
+        }
+
+    return {"happy": pack(groups[True]), "unhappy": pack(groups[False])}
+
+
+def _monthly_analysis(user_id, rows):
+    """Month-by-month money and Schedule / Plan time, newest first."""
+    def by_month(sql):
+        return {r[0]: r[1] for r in get_db().execute(sql, (user_id,))}
+
+    income = by_month("SELECT substr(date, 1, 7), SUM(amount) FROM incomes"
+                      " WHERE user_id = ? GROUP BY 1")
+    spend = by_month("SELECT substr(date, 1, 7), SUM(amount) FROM expenses"
+                     " WHERE user_id = ? GROUP BY 1")
+    invest = by_month(
+        "SELECT substr(date, 1, 7),"
+        " SUM(CASE WHEN action = 'invest' THEN amount ELSE -amount END)"
+        " FROM investments WHERE user_id = ? GROUP BY 1")
+    ny, total = {}, {}
+    for r in rows:
+        month = r["date"][:7]
+        total[month] = total.get(month, 0) + 1
+        if r["q"] == "NY":
+            ny[month] = ny.get(month, 0) + 1
+    months = sorted(set(income) | set(spend) | set(invest) | set(total), reverse=True)[:12]
+    out = []
+    for m in months:
+        earned = income.get(m, 0.0)
+        spent = spend.get(m, 0.0)
+        invested = invest.get(m, 0.0)
+        hours = total.get(m, 0)
+        ny_hours = ny.get(m, 0)
+        out.append({
+            "month": m,
+            "label": date.fromisoformat(m + "-01").strftime("%b %Y"),
+            "income": earned,
+            "spend": spent,
+            "invest": invested,
+            "saved": earned - spent - invested,
+            "ny_hours": ny_hours,
+            "total_hours": hours,
+            "ny_pct": ny_hours / hours if hours else 0.0,
+        })
+    return out
+
+
+def time_analysis(user_id, today):
+    """All-time view of the time log: quadrants, rhythms, activities, money and mood."""
+    rows = _logged_rows(user_id)
+    hours = _quadrant_hours(rows)
+    total = sum(hours.values())
+    dates = {r["date"] for r in rows}
+    mood_rows = [r for r in get_db().execute(
+        "SELECT date, is_happy FROM daily_logs WHERE user_id = ? AND is_happy IS NOT NULL",
+        (user_id,))]
+    happy = sum(1 for r in mood_rows if r["is_happy"])
+    weekdays = [
+        {"index": i, "label": d, "hours": 0, "days": 0}
+        for i, d in enumerate(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
+    ]
+    for iso in dates:
+        weekdays[date.fromisoformat(iso).weekday()]["days"] += 1
+    for r in rows:
+        weekdays[date.fromisoformat(r["date"]).weekday()]["hours"] += 1
+    for w in weekdays:
+        w["avg"] = w["hours"] / w["days"] if w["days"] else 0.0
+
+    monthly = _monthly_analysis(user_id, rows)
+    funded = [m for m in monthly if m["income"] > 0 and m["total_hours"]]
+    high = [m for m in funded if m["ny_pct"] >= 0.2]
+    low = [m for m in funded if m["ny_pct"] < 0.2]
+
+    def avg_saved(group):
+        return sum(m["saved"] for m in group) / len(group) if group else None
+
+    return {
+        "total": total,
+        "hours": hours,
+        "pct": _pct(hours),
+        "tracked_days": len(dates),
+        "answered_days": len(mood_rows),
+        "happy_days": happy,
+        "happy_rate": happy / len(mood_rows) if mood_rows else None,
+        "first_day": min(dates) if dates else None,
+        "last_day": max(dates) if dates else None,
+        "first_pretty": date.fromisoformat(min(dates)).strftime("%d %b %Y") if dates else None,
+        "last_pretty": date.fromisoformat(max(dates)).strftime("%d %b %Y") if dates else None,
+        "hour_pattern": _hour_pattern(rows),
+        "weekdays": weekdays,
+        "top_tasks": _top_tasks(rows, limit=10),
+        "cycles": _cycle_totals(user_id, today),
+        "mood_money": _mood_money(user_id, rows),
+        "monthly": monthly,
+        "money_link": {
+            "high_saved": avg_saved(high),
+            "low_saved": avg_saved(low),
+            "high_n": len(high),
+            "low_n": len(low),
+        },
+    }
 
 
 def time_default_date(user_id, today):
@@ -1086,13 +1371,66 @@ def cycle_data(user_id, end_iso, today):
 
     focused = [d for d in days if d["logged"] and d["hours"]["NY"] >= 2]
     other = [d for d in days if d["logged"] and d["hours"]["NY"] < 2]
+    cycle_rows = _logged_rows(user_id, start.isoformat(), finish.isoformat())
+    hour_pattern = _hour_pattern(cycle_rows)
+    top_tasks = _top_tasks(cycle_rows)
+    previous = _cycle_summary(user_id, start - timedelta(days=CYCLE_DAYS),
+                              start - timedelta(days=1))
+    pct = _pct(hours)
+
+    insights = []
+    tracked_days = sum(1 for d in days if d["logged"])
+    if total:
+        coverage = round(total / (len(TIME_SLOTS) * max(1, tracked_days)) * 100)
+        insights.append({
+            "label": "Coverage",
+            "text": f"You logged {total} hours over {tracked_days} tracked "
+                    f"{'day' if tracked_days == 1 else 'days'} — {coverage}% of the waking hours "
+                    f"on those days.",
+        })
+        best = max(hour_pattern, key=lambda s: s["hours"]["NY"])
+        if best["hours"]["NY"]:
+            insights.append({
+                "label": "Best planning hour",
+                "text": f"Your strongest Schedule / Plan hour is {best['label']} "
+                        f"with {best['hours']['NY']} h of important, not-urgent work.",
+            })
+        if top_tasks:
+            top = top_tasks[0]
+            insights.append({
+                "label": "Most repeated activity",
+                "text": f"“{top['label']}” appears {top['hours']} times "
+                        f"({round(top['pct'] * 100)}% of logged hours).",
+            })
+        if previous["total"]:
+            delta = round((pct["NY"] - previous["pct"]["NY"]) * 100)
+            direction = "up" if delta > 0 else ("down" if delta < 0 else "flat")
+            insights.append({
+                "label": "Versus last cycle",
+                "text": f"Schedule / Plan time is {direction} {abs(delta)} points "
+                        f"from the previous cycle ({round(previous['pct']['NY'] * 100)}%).",
+            })
+        if focused and other:
+            fh, oh = rate(focused), rate(other)
+            if fh is not None and oh is not None:
+                insights.append({
+                    "label": "Mood link",
+                    "text": f"On days with 2+ NY hours you felt happy {round(fh * 100)}% of the time, "
+                            f"versus {round(oh * 100)}% on other tracked days.",
+                })
+        if pct["NN"] >= 0.3:
+            insights.append({
+                "label": "Eliminate",
+                "text": f"{round(pct['NN'] * 100)}% of your logged time is in Eliminate (NN). "
+                        f"Even moving one such hour a day into Schedule / Plan would shift the balance.",
+            })
     return {
         "start": start,
         "finish": finish,
         "days": days,
         "total": total,
         "hours": hours,
-        "pct": {q: (hours[q] / total if total else 0.0) for q in QUADRANTS},
+        "pct": pct,
         "logged_days": sum(1 for d in days if d["logged"]),
         "happy_days": sum(1 for m in moods if m),
         "answered_days": len(moods),
@@ -1105,6 +1443,10 @@ def cycle_data(user_id, end_iso, today):
             "other_happy": rate(other),
             "other_spend": avg(other, "spend"),
         },
+        "previous": previous,
+        "hour_pattern": hour_pattern,
+        "top_tasks": top_tasks,
+        "insights": insights,
         "prev_end": (start - timedelta(days=1)).isoformat(),
         "next_end": (finish + timedelta(days=1)).isoformat(),
     }

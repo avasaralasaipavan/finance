@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% block title %}Time analysis · Finance Journal{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow"><a href="{{ url_for('time_tracker.dashboard') }}">Time tracker</a> · All time</p>
+    <h1 class="display">Time analysis</h1>
+    <p class="muted small">
+      {% if data.total %}
+        {{ data.first_pretty }} → {{ data.last_pretty }} · {{ data.tracked_days }} tracked
+        {{ 'day' if data.tracked_days == 1 else 'days' }} · {{ data.total }} hours
+      {% else %}
+        No hours logged yet
+      {% endif %}
+    </p>
+  </div>
+  <nav class="year-switch" aria-label="Time pages">
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('time_tracker.dashboard') }}">Cycle dashboard</a>
+    <a class="btn btn-primary btn-sm" href="{{ url_for('time_tracker.log_day', day=today.isoformat()) }}">+ Log today</a>
+  </nav>
+</section>
+
+{% if data.total == 0 %}
+<section class="empty-state small">
+  <p class="big-num">◷</p>
+  <h3>Nothing to analyse yet</h3>
+  <p class="muted">Log a day or two of hours and this page will show where your time goes, when
+    your best hours happen, what repeats, and how it lines up with your money and mood.</p>
+  <a class="btn btn-primary" href="{{ url_for('time_tracker.log_day', day=today.isoformat()) }}">Log today</a>
+</section>
+{% else %}
+
+<section class="stat-row">
+  <div class="stat"><span class="stat-label">Hours logged</span>
+    <span class="stat-value">{{ data.total }}</span>
+    <span class="stat-sub">across {{ data.tracked_days }} days</span></div>
+  <div class="stat"><span class="stat-label">Schedule / Plan</span>
+    <span class="stat-value">{{ (data.pct['NY'] * 100) | round | int }}%</span>
+    <span class="stat-sub">{{ data.hours['NY'] }} h important &amp; not urgent</span></div>
+  <div class="stat"><span class="stat-label">Happy days</span>
+    <span class="stat-value">{{ data.happy_days }}<span class="muted small"> / {{ data.answered_days }}</span></span>
+    <span class="stat-sub">
+      {% if data.happy_rate is not none %}{{ (data.happy_rate * 100) | round | int }}% of answered days{% else %}no mood answers yet{% endif %}
+    </span></div>
+  <div class="stat"><span class="stat-label">Average logged day</span>
+    <span class="stat-value">{{ (data.total / data.tracked_days) | round(1) }} h</span>
+    <span class="stat-sub">of the 20 waking hours</span></div>
+</section>
+
+<div class="card matrix-card cycle-matrix-card">
+  <h2 class="card-title">Where all your time goes</h2>
+  <p class="card-help muted small">All-time share of logged hours. The green Schedule / Plan block
+    is the one that compounds: important work that is not yet urgent.</p>
+  <div class="matrix-grid">
+    {% for code, q in quadrants.items() %}
+    <div class="matrix-cell" data-q="{{ code }}">
+      <span class="matrix-code">{{ code }}</span>
+      <h3>{{ q.title }}</h3>
+      <p class="muted small">{{ q.subtitle }}</p>
+      <p class="matrix-total"><b>{{ data.hours[code] }}</b> h
+        <span class="matrix-pct">{{ (data.pct[code] * 100) | round | int }}%</span></p>
+      <div class="matrix-bar" role="img"
+           aria-label="{{ (data.pct[code] * 100) | round | int }} percent in {{ q.title }}">
+        <span style="width: {{ (data.pct[code] * 100) | round(1) }}%"></span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="two-col tt-dashboard-cols">
+  <div class="card">
+    <h2 class="card-title">When your hours go</h2>
+    <p class="card-help muted small">Every logged hour of the day, summed across all your days.
+      Look for the hours where Schedule / Plan (green) is strongest — that is when you do your
+      best important work.</p>
+    {% set peak = data.hour_pattern | map(attribute='total') | max %}
+    <div class="tt-hour-chart" role="img" aria-label="All-time hours logged per hour of the day">
+      {% for s in data.hour_pattern %}
+      <div class="tt-hour-col{{ ' is-peak' if peak and s.total == peak }}"
+           title="{{ s.label }}: {{ s.total }} h logged">
+        <span class="tt-hour-bar" style="height: {{ ((s.total / (peak or 1)) * 100) | round(1) }}%">
+          <span class="tt-hour-stack">
+            {% for code in quadrants %}
+              {% if s.hours[code] %}
+              <span class="tt-hour-seg" data-q="{{ code }}" style="flex: {{ s.hours[code] }}"></span>
+              {% endif %}
+            {% endfor %}
+          </span>
+        </span>
+        <span class="tt-hour-label">{{ s.hour % 12 or 12 }}{{ 'a' if s.hour < 12 else 'p' }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <ul class="split-legend">
+      {% for code, q in quadrants.items() %}
+      <li><i class="legend-swatch" data-q="{{ code }}"></i>{{ q.title }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">What keeps repeating</h2>
+    <p class="card-help muted small">Activities you have written down most often. If a low-value
+      task sits near the top, that is the first thing to redesign.</p>
+    <ul class="tt-top-list">
+      {% for t in data.top_tasks %}
+      <li>
+        <span class="tt-top-label">{{ t.label }}</span>
+        <span class="tt-top-hours">{{ t.hours }} h</span>
+        <span class="tt-top-bar"><i style="width: {{ (t.pct * 100) | round(1) }}%"></i></span>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+
+<div class="two-col tt-dashboard-cols">
+  <div class="card">
+    <h2 class="card-title">Your week</h2>
+    <p class="card-help muted small">Average logged hours per tracked day, by weekday. A tall bar
+      means you tend to record more on that day; a short one may be a blind spot.</p>
+    {% set week_peak = data.weekdays | map(attribute='avg') | max %}
+    <div class="tt-week-chart" role="img" aria-label="Average logged hours by weekday">
+      {% for w in data.weekdays %}
+      <div class="tt-week-col" title="{{ w.label }}: {{ w.avg | round(1) }} h average over {{ w.days }} days">
+        <span class="tt-week-bar" style="height: {{ ((w.avg / (week_peak or 1)) * 100) | round(1) }}%">
+          <i></i>
+        </span>
+        <span class="tt-week-label">{{ w.label }}</span>
+        <span class="tt-week-value">{{ w.avg | round(1) }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">Cycle by cycle</h2>
+    <p class="card-help muted small">Your last {{ data.cycles | length }} ten-day cycles. Watch the
+      Schedule / Plan share and the happy rate move together.</p>
+    <div class="table-wrap">
+      <table class="data-table tt-cycle-table">
+        <thead><tr><th>Cycle</th><th>Dates</th><th class="num">Hours</th>
+          <th class="num">NY</th><th class="num">Happy</th></tr></thead>
+        <tbody>
+        {% for c in data.cycles | reverse %}
+          <tr>
+            <td data-label="Cycle"><b>#{{ c.number }}</b></td>
+            <td data-label="Dates">{{ c.start.strftime('%d %b') }} – {{ c.finish.strftime('%d %b') }}</td>
+            <td data-label="Hours" class="num">{{ c.total }}</td>
+            <td data-label="NY" class="num">
+              <span class="tt-mini"><i style="width: {{ (c.pct['NY'] * 100) | round(1) }}%"></i></span>
+              {{ (c.pct['NY'] * 100) | round | int }}%
+            </td>
+            <td data-label="Happy" class="num">
+              {% if c.happy_rate is not none %}{{ (c.happy_rate * 100) | round | int }}%{% else %}—{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card tt-money-card">
+  <h2 class="card-title">Money &amp; mood</h2>
+  <p class="card-help muted small">Pulled from the finance journal for the same days. These are
+    patterns to notice, not proof that one causes the other.</p>
+  <div class="tt-money-grid">
+    <div class="tt-money-box is-happy">
+      <span class="tt-money-label">On happy days</span>
+      <span class="tt-money-value">
+        {% if data.mood_money.happy.avg_spend is not none %}{{ data.mood_money.happy.avg_spend | inr }}{% else %}—{% endif %}
+      </span>
+      <span class="muted small">average spend · {{ data.mood_money.happy.days }} days</span>
+      <span class="muted small">
+        {% if data.mood_money.happy.avg_ny is not none %}{{ data.mood_money.happy.avg_ny | round(1) }} NY hours a day{% endif %}
+      </span>
+    </div>
+    <div class="tt-money-box">
+      <span class="tt-money-label">On not-happy days</span>
+      <span class="tt-money-value">
+        {% if data.mood_money.unhappy.avg_spend is not none %}{{ data.mood_money.unhappy.avg_spend | inr }}{% else %}—{% endif %}
+      </span>
+      <span class="muted small">average spend · {{ data.mood_money.unhappy.days }} days</span>
+      <span class="muted small">
+        {% if data.mood_money.unhappy.avg_ny is not none %}{{ data.mood_money.unhappy.avg_ny | round(1) }} NY hours a day{% endif %}
+      </span>
+    </div>
+  </div>
+  {% if data.money_link.high_n and data.money_link.low_n %}
+  <p class="tt-money-link">
+    In months where at least 20% of logged time was Schedule / Plan, you saved
+    <b>{{ data.money_link.high_saved | inr }}</b> on average — versus
+    <b>{{ data.money_link.low_saved | inr }}</b> in other months.
+    <span class="muted small">({{ data.money_link.high_n }} and {{ data.money_link.low_n }} months with income logged.)</span>
+  </p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 class="card-title">Month by month</h2>
+  <p class="card-help muted small">Money from your journal, time from your hourly log. “Saved” is
+    income minus spending minus net investments.</p>
+  <div class="table-wrap">
+    <table class="data-table tt-month-table">
+      <thead><tr><th>Month</th><th class="num">Income</th><th class="num">Spent</th>
+        <th class="num">Invested</th><th class="num">Saved</th><th class="num">NY time</th>
+        <th class="num">NY share</th></tr></thead>
+      <tbody>
+      {% for m in data.monthly %}
+        <tr>
+          <td data-label="Month"><b>{{ m.label }}</b></td>
+          <td data-label="Income" class="num">{{ m.income | inr }}</td>
+          <td data-label="Spent" class="num">{{ m.spend | inr }}</td>
+          <td data-label="Invested" class="num">{{ m.invest | inr }}</td>
+          <td data-label="Saved" class="num {{ 'neg' if m.saved < 0 }}">{{ m.saved | inr }}</td>
+          <td data-label="NY time" class="num">{{ m.ny_hours }} / {{ m.total_hours }} h</td>
+          <td data-label="NY share" class="num">
+            <span class="tt-mini"><i style="width: {{ (m.ny_pct * 100) | round(1) }}%"></i></span>
+            {{ (m.ny_pct * 100) | round | int }}%
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
